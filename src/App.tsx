@@ -153,24 +153,28 @@ const App: FC = () => {
         dispatch({ type: 'UPDATE_TIMER', payload: '00:00:00' });
     }, [dispatch]);
     // ✅ ฟังก์ชันใหม่สำหรับดึง Chat Token จาก Backend
-    const fetchChatToken = useCallback(async (accessToken: string) => {
-        try {
-            const response = await fetch(`${BACKEND_API_BASE_URL}/api/chat-token`, {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                },
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-            }
-            const data = await response.json();
-            setChatToken(data.chatToken);
-        } catch (error) {
-            console.error("Failed to fetch chat token:", error);
-            setChatToken(null);
+    
+const fetchChatToken = useCallback(async (accessToken: string) => {
+    try {
+        const response = await fetch(`${BACKEND_API_BASE_URL}/api/chat-token`, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+            },
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('API Error: /api/chat-token not OK', response.status, errorData); // เพิ่ม log
+            throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
         }
-    }, [BACKEND_API_BASE_URL]);
+        const data = await response.json();
+        console.log("Backend Response for chat-token:", data); // ✅ เพิ่ม log นี้
+        setChatToken(data.chatToken); // ✅ บันทึก Chat Token ลงใน State
+        console.log("Set chatToken to:", data.chatToken); // ✅ เพิ่ม log นี้
+    } catch (error) {
+        console.error("Failed to fetch chat token:", error);
+        setChatToken(null);
+    }
+}, [BACKEND_API_BASE_URL, setChatToken]); // ✅ ตรวจสอบว่า setChatToken อยู่ใน Dependency Array
 
         // ✅ ฟังก์ชันสำหรับดึง Restream Channels
     const fetchRestreamChannels = useCallback(async (accessToken?: string | null) => {
