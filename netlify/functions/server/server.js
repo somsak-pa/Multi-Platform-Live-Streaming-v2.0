@@ -231,7 +231,7 @@ const handler = async (event, context) => {
                 return {
                     statusCode: 200,
                     headers: headers,
-                    body: JSON.stringify({ chatToken: webChatUrl }), // ✅ ส่ง chatToken ที่ถูกต้องกลับไป Frontend
+                    body: JSON.stringify({ webChatUrl: webChatUrl }), // ✅ ส่ง chatToken ที่ถูกต้องกลับไป Frontend
                 };
 
             } catch (error) {
