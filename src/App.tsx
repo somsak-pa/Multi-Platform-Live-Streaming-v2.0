@@ -5,7 +5,7 @@ import {
     FaFacebookF, FaYoutube, FaTiktok, FaInstagram, FaBoxOpen, FaPlus, FaEye,
     FaPlay, FaStop, FaCheckDouble, FaComments, FaGear, FaPaperPlane, FaPencil,
     FaTrash, FaSun, FaMoon, FaChevronDown, FaKey, FaSatelliteDish, FaCircleCheck, FaCircleXmark,
-    FaCircleInfo, FaCircleQuestion, FaEyeSlash, FaMicrophone, FaShopware, FaUsers,
+    FaCircleInfo, FaCircleQuestion, FaEyeSlash, FaMicrophone, FaShopware,
     FaGlobe // ✅ เพิ่ม FaGlobe สำหรับ ChannelsTab
 } from 'react-icons/fa6';
 import OBSWebSocket from 'obs-websocket-js';
@@ -898,6 +898,7 @@ const App: FC = () => {
                                 onToggleRestreamChannel={handleToggleRestreamChannel}
                                 chatToken={chatToken}
                                 handleConnectRestream={handleConnectRestream}
+                                platform={appState.activeRightTab}
                             />
                         </div>
                     </div>
@@ -1088,6 +1089,7 @@ const RightPanel: FC<{
     onToggleRestreamChannel: (channelId: number, currentEnabledState: boolean) => void;
     chatToken: string | null; // ✅ รับ chatToken Prop
     handleConnectRestream: () => void;
+    platform: string;
 }> = (props) => {
     const { activeTab, setActiveTab, onSetModal, onSendComment, restreamChannels, onFetchRestreamChannels, onToggleRestreamChannel, chatToken, comments } = props; // ✅ รับ comments
     const tabs = [
@@ -1238,12 +1240,20 @@ const SettingsTab: FC<{
     onSetModal: React.Dispatch<React.SetStateAction<{ type: 'alert' | 'confirm' | 'product' | 'settings' | null; props?: any }>>;
     onFetchRestreamChannels: () => void; // ถ้า SettingsTab ต้องใช้
     handleConnectRestream: () => void; // ✅ รับ handleConnectRestream
+    platform: string;
 }> = (props) => {
-    const { obsStatus, runningText, streamTitle, onConnectOBS, onDisconnectOBS, onUpdateRunningText, onUpdateStreamTitle, onOpenPlatformSettings, onSetModal, onFetchRestreamChannels, handleConnectRestream } = props;
+    const { obsStatus, runningText, streamTitle, onConnectOBS, onDisconnectOBS, onUpdateRunningText, onUpdateStreamTitle, onOpenPlatformSettings, onSetModal, onFetchRestreamChannels, handleConnectRestream,platform } = props;
     const [localRunningText, setLocalRunningText] = useState(runningText); // เพิ่ม local state เพื่อให้ input ทำงานได้
     useEffect(() => { // Sync local state with prop
         setLocalRunningText(runningText);
     }, [runningText]);
+
+    useEffect(() => {
+        if (platform === 'restream') {
+            console.log("SettingsTab: Fetching Restream channels on tab open.");
+            onFetchRestreamChannels(); // ✅ เรียกใช้ฟังก์ชันนี้ได้แล้ว
+        }
+    }, [platform, onFetchRestreamChannels]);
 
     return (
         <div className="space-y-6">

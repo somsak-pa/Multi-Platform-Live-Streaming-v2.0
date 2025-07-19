@@ -181,7 +181,7 @@ const handler = async (event, context) => {
                 return {
                     statusCode: 302,
                     headers: {
-                        Location: `https://prismatic-sorbet-b852f8.netlify.app/settings?auth_status=failed&message=${redirectMessage}`, // ✅ URL Frontend ของคุณ
+                        Location: `https://prismatic-sorbet-b852f8.netlify.app/settings?auth_status=failed&message=${redirectMessage}`,
                     },
                 };
             }
