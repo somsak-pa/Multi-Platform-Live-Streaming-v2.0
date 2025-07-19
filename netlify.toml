@@ -1,16 +1,18 @@
 # netlify.toml
 
 [build]
-  command = "npm run build" # คำสั่งสำหรับ Build Frontend ของคุณ (จาก package.json)
-  publish = "dist"          # โฟลเดอร์ที่ Vite Build Frontend ออกมา
+  command = "npm run build"
+  publish = "dist"
 
 [functions]
-  directory = "netlify/functions" # โฟลเดอร์สำหรับ Serverless Functions ของคุณ
-  # node_bundler = "esbuild"      # (Optional) หากต้องการใช้ bundler อื่นสำหรับ functions
-  # external_node_modules = ["node-fetch"] # (Optional) ถ้า function ใช้ external modules บางตัวที่ Netlify ไม่ได้ bundler ให้อัตโนมัติ
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  external_node_modules = ["node-fetch"]
 
-# ตัวอย่างการตั้งค่า Redirects (เช่น สำหรับ Single Page Applications)
-# [[redirects]]
-#   from = "/*"
-#   to = "/index.html"
-#   status = 200
+# ✅ ส่วนสำคัญสำหรับ Single Page Applications (SPA)
+#    บอก Netlify ว่าถ้าหา path ไม่เจอ ให้ส่ง index.html กลับไป
+#    เพื่อให้ React Router หรือระบบ Routing ใน Frontend จัดการ
+[[redirects]]
+  from = "/*"       # ทุก path ที่ไม่ตรงกับไฟล์จริง
+  to = "/index.html" # ให้ส่ง index.html กลับไป
+  status = 200      # ใช้ Status 200 (OK) ไม่ใช่ 404
