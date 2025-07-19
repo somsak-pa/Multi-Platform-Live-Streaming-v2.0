@@ -1400,7 +1400,17 @@ const DisplaySettings: FC<{streamTitle: string; runningText: string; onStreamTit
             </div>
             <div className="mt-4">
                 <label htmlFor="running-text-input" className="block mb-2 font-semibold">ข้อความวิ่ง</label>
-                <textarea id="running-text-input" value={localRunningText} onChange={e => setLocalRunningText(e.target.value)} rows={2} className="w-full p-3 bg-white dark:bg-gray-800 rounded-lg border"></textarea>
+                <textarea
+                    id="running-text-input"
+                    value={localRunningText}
+                    // ✅ แก้ไขตรงนี้: เพิ่มการเรียก onRunningTextChange
+                    onChange={e => {
+                        setLocalRunningText(e.target.value); // อัปเดต local state
+                        onRunningTextChange(e.target.value); // ✅ เรียก Prop นี้เพื่อส่งค่ากลับไปยัง Parent
+                    }}
+                    rows={2}
+                    className="w-full p-3 bg-white dark:bg-gray-800 rounded-lg border"
+                ></textarea>
                 <button onClick={onUpdate} className="mt-2 w-full p-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">อัปเดตข้อความ</button>
             </div>
         </div>
