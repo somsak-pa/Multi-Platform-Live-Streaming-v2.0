@@ -35,16 +35,17 @@ const handler = async (event, context) => {
     const headers = {
         'Access-Control-Allow-Origin': 'https://prismatic-sorbet-b852f8.netlify.app', // ✅ URL Frontend ของคุณ
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        'Access-Control-Allow-Methods': 'GET,HEAD,PUT,PATCH,POST,DELETE', // อนุญาตทุก HTTP Methods ที่ใช้
         'Access-Control-Allow-Credentials': 'true',
         'Content-Type': 'application/json', // บอกเบราว์เซอร์ว่า Response เป็น JSON
     };
 
     // ✅ 5.2 จัดการ Preflight OPTIONS request สำหรับ CORS
+    //    เบราว์เซอร์จะส่ง OPTIONS request มาก่อนสำหรับบางประเภทของ CORS request
     if (event.httpMethod === 'OPTIONS') {
         return {
             statusCode: 204, // No Content
-            headers: headers,
+            headers: headers, // ส่ง CORS headers กลับไป
         };
     }
 
@@ -52,11 +53,11 @@ const handler = async (event, context) => {
     //    Function ของคุณจะถูกเข้าถึงที่ `/.netlify/functions/server`
     //    ดังนั้น /api/auth/restream จะเป็น `/.netlify/functions/server/api/auth/restream`
     const functionBasePath = '/.netlify/functions/server'; // ชื่อ function ที่อยู่ใน netlify/functions/
-    const apiPath = event.path.replace(functionBasePath, ''); // เช่นถ้า event.path คือ '/.netlify/functions/server/api/auth/restream', apiPath จะเป็น '/api/auth/restream'
+    // เช่นถ้า event.path คือ '/.netlify/functions/server/api/auth/restream', apiPath จะเป็น '/api/auth/restream'
+    const apiPath = event.path.replace(functionBasePath, '');
 
     console.log(`Function received request: ${event.httpMethod} ${event.path}`);
     console.log(`Parsed API Path: ${apiPath}`);
-
 
     try {
         // ✅ 5.4 จัดการ Route ต่างๆ (คล้ายกับ Express Router แต่ใช้ if/else if)
@@ -70,7 +71,7 @@ const handler = async (event, context) => {
                     body: JSON.stringify({ error: 'Restream OAuth configuration is missing (CLIENT_ID or REDIRECT_URI).' }),
                 };
             }
-            // ✅ เพิ่ม 'chat.read' เข้าไปใน scopes
+            // ✅ เพิ่ม 'chat.read' เข้าไปใน scopes (สำคัญสำหรับ Chat Widget)
             const scopes = 'channels.read channels.write live.read chat.read';
             const authUrl = `${RESTREAM_OAUTH_AUTH_URL}?response_type=code&client_id=${RESTREAM_CLIENT_ID}&redirect_uri=${encodeURIComponent(RESTREAM_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}`;
             
@@ -195,6 +196,7 @@ const handler = async (event, context) => {
                     const errorText = await response.text();
                     console.error(`Error from Restream API (${response.status}) fetching chat token:`, errorText);
                     if (response.status === 401 || response.status === 403) {
+                         // ตัวอย่าง errorText เมื่อ scope ไม่พอ: `{"error":{"statusCode":403,"code":403,"message":"Access token scope not sufficient for requested resource."`
                          return {
                             statusCode: response.status,
                             headers: headers,
@@ -208,13 +210,29 @@ const handler = async (event, context) => {
                     };
                 }
 
-                const data = await response.json();
-                const chatToken = data.token; // Restream API จะคืนค่าเป็น { token: "..." }
+                const data = await response.json(); // Response จาก Restream API: { "webChatUrl": "https://chat.restream.io/embed?token=xxx" }
+                
+                // ✅ แก้ไขตรงนี้: ดึง token จาก webChatUrl
+                const webChatUrl = data.webChatUrl;
+                let chatToken = null;
+                if (webChatUrl) {
+                    const urlParams = new URLSearchParams(webChatUrl.split('?')[1]);
+                    chatToken = urlParams.get('token');
+                }
+
+                if (!chatToken) {
+                    console.error("Chat token not found in Restream API response 'webChatUrl' property:", data);
+                    return {
+                        statusCode: 500,
+                        headers: headers,
+                        body: JSON.stringify({ error: "Failed to extract chat token from Restream API response." }),
+                    };
+                }
 
                 return {
                     statusCode: 200,
                     headers: headers,
-                    body: JSON.stringify({ chatToken: chatToken }),
+                    body: JSON.stringify({ chatToken: chatToken }), // ✅ ส่ง chatToken ที่ถูกต้องกลับไป Frontend
                 };
 
             } catch (error) {
