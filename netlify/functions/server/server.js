@@ -184,7 +184,7 @@ const handler = async (event, context) => {
             }
 
             try {
-                console.log('111')
+                console.log('111 : ' + accessToken)
 
                 // ✅ เรียก Restream API สำหรับ Chat URL
                 const response = await fetch(`${RESTREAM_API_BASE_URL}/v2/user/webchat/url`, {
@@ -194,7 +194,7 @@ const handler = async (event, context) => {
                         'Content-Type': 'application/json'
                     }
                 });
-
+console.log('111.111 : ' + response)
                 if (!response.ok) {
                     console.log('222')
                     const errorText = await response.text();
