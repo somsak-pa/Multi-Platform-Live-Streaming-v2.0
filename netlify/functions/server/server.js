@@ -211,21 +211,27 @@ const handler = async (event, context) => {
                 }
 
                 const data = await response.json(); // Response จาก Restream API: { "webChatUrl": "https://chat.restream.io/embed?token=xxx" }
-                
-                // ✅ แก้ไขตรงนี้: ดึง token จาก webChatUrl
-                const webChatUrl = data.webChatUrl;
+                const webChatUrl = data.webChatUrl; // ✅ นี่คือ URL เต็มที่ได้จาก Restream API
+
                 let chatToken = null;
                 if (webChatUrl) {
-                    const urlParams = new URLSearchParams(webChatUrl.split('?')[1]);
-                    chatToken = urlParams.get('token');
+                    try {
+                        // ✅ สร้าง URL Object จาก webChatUrl ที่ได้มา
+                        const chatUrlObject = new URL(webChatUrl);
+                        // ✅ ใช้ .searchParams.get('token') เพื่อดึง token ออกมา
+                        chatToken = chatUrlObject.searchParams.get('token');
+                    } catch (urlError) {
+                        console.error("Error parsing webChatUrl:", urlError, webChatUrl);
+                        // ถ้า URL ไม่ถูกต้อง ก็จะจับ error ตรงนี้
+                    }
                 }
 
                 if (!chatToken) {
-                    console.error("Chat token not found in Restream API response 'webChatUrl' property:", data);
+                    console.error("Chat token not found or could not be extracted from Restream API response 'webChatUrl' property:", data);
                     return {
                         statusCode: 500,
                         headers: headers,
-                        body: JSON.stringify({ error: "Failed to extract chat token from Restream API response." }),
+                        body: JSON.stringify({ error: "Failed to extract chat token from Restream API response. webChatUrl missing or invalid." }),
                     };
                 }
 
