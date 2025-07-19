@@ -21,7 +21,7 @@ import {
 // Environment Variables
 // ====================================================================
 const BACKEND_API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL; // ✅ ใช้ Environment Variable
-const RESTREAM_API_BASE_URL = import.meta.env.RESTREAM_API_BASE_URL; // ✅ ใช้ Environment Variable
+//const RESTREAM_API_BASE_URL = import.meta.env.RESTREAM_API_BASE_URL; // ✅ ใช้ Environment Variable
 // ====================================================================
 // State Management with useReducer
 // ====================================================================
