@@ -153,28 +153,35 @@ const App: FC = () => {
         dispatch({ type: 'UPDATE_TIMER', payload: '00:00:00' });
     }, [dispatch]);
     // ✅ ฟังก์ชันใหม่สำหรับดึง Chat Token จาก Backend
-    
+
 const fetchChatToken = useCallback(async (accessToken: string) => {
     try {
         const response = await fetch(`${BACKEND_API_BASE_URL}/api/chat-token`, {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-            },
+            headers: { 'Authorization': `Bearer ${accessToken}` },
         });
         if (!response.ok) {
             const errorData = await response.json();
-            console.error('API Error: /api/chat-token not OK', response.status, errorData); // เพิ่ม log
             throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
         }
-        const data = await response.json();
-        console.log("Backend Response for chat-token:", data); // ✅ เพิ่ม log นี้
-        setChatToken(data.chatToken); // ✅ บันทึก Chat Token ลงใน State
-        console.log("Set chatToken to:", data.chatToken); // ✅ เพิ่ม log นี้
+        const data = await response.json(); // ✅ data ตอนนี้คือ { webChatUrl: "..." }
+
+        // console.log("Backend Response for chat-token:", data); // ✅ ล็อกนี้ดีแล้ว
+
+        // ✅ แก้ไขตรงนี้: รับค่าจาก data.webChatUrl และนำไป setChatToken
+        //    เพราะ Backend ส่ง key เป็น webChatUrl ไม่ใช่ chatToken
+        if (data.webchatUrl) {
+            setChatToken(data.webchatUrl); // ✅ บันทึก webChatUrl ลงใน State chatToken
+            console.log("Set chatToken (now webChatUrl) to:", data.webchatUrl);
+        } else {
+            console.error("webChatUrl not found in backend response for chat-token:", data);
+            setChatToken(null);
+        }
+
     } catch (error) {
-        console.error("Failed to fetch chat token:", error);
+        console.error("Failed to fetch chat token (webChatUrl):", error);
         setChatToken(null);
     }
-}, [BACKEND_API_BASE_URL, setChatToken]); // ✅ ตรวจสอบว่า setChatToken อยู่ใน Dependency Array
+}, [BACKEND_API_BASE_URL, setChatToken]);
 
         // ✅ ฟังก์ชันสำหรับดึง Restream Channels
     const fetchRestreamChannels = useCallback(async (accessToken?: string | null) => {
@@ -1149,7 +1156,8 @@ const CommentsTab: FC<{ comments: Comment[]; onSendComment: (text: string) => vo
 
 
     console.log("CommentsTab received chatToken:", chatToken); // ✅ เพิ่ม log นี้
-    const embedUrl = chatToken ? `https://chat.restream.io/embed?token=${chatToken}` : '';
+    //const embedUrl = chatToken ? `https://chat.restream.io/embed?token=${chatToken}` : '';
+    const embedUrl = chatToken; 
     console.log("CommentsTab embedUrl:", embedUrl); // ✅ เพิ่ม log นี้
 
 
