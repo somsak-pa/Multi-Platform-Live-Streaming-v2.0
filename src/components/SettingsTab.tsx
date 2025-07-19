@@ -1,6 +1,6 @@
 // src/components/SettingsTab.tsx
 import React, { useState, FC } from 'react';
-import { FaChevronDown, FaEye, FaEyeSlash, FaKey,  FaSun, FaMoon } from 'react-icons/fa6';
+import { FaChevronDown, FaEye, FaEyeSlash,} from 'react-icons/fa6';
 import { AppState } from '../types'; // นำเข้า AppState
 import { FaFacebookF, FaYoutube, FaTiktok, FaInstagram, FaShopware, FaSatelliteDish } from 'react-icons/fa6';
 // UI Components (ย้ายมาจาก App.tsx)
@@ -131,7 +131,7 @@ interface SettingsTabProps {
 }
 
 const SettingsTab: FC<SettingsTabProps> = (props) => {
-    const { obsStatus, runningText, streamTitle, onConnectOBS, onDisconnectOBS, onUpdateRunningText, onUpdateStreamTitle, onOpenPlatformSettings, onSetModal, onFetchRestreamChannels } = props;
+    const { obsStatus, runningText, streamTitle, onConnectOBS, onDisconnectOBS, onUpdateRunningText, onUpdateStreamTitle, onOpenPlatformSettings, onSetModal} = props;
     const [localRunningText, setLocalRunningText] = useState(runningText);
 
     // --- ฟังก์ชันสำหรับเชื่อมต่อ Restream (อยู่ใน App.tsx) ---

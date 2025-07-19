@@ -1,7 +1,7 @@
 // src/components/RightPanel.tsx
 import { FC } from 'react';
 import { FaComments, FaGear, FaGlobe } from 'react-icons/fa6';
-import { AppState, Comment, RestreamChannel } from '../types'; // นำเข้า RestreamChannel ด้วย
+import { AppState, Comment as CustomComment, RestreamChannel } from '../types'; // เพิ่ม as CustomComment
 
 // นำเข้า Tab Components
 import CommentsTab from './CommentsTab';
@@ -17,7 +17,7 @@ interface RightPanelProps {
 
   // Props ที่ส่งต่อไปให้ Child Components
   obsStatus: AppState['obsStatus']; // ส่งให้ SettingsTab
-  comments: Comment[]; // ส่งให้ CommentsTab (ตอนนี้ถูกใช้แค่ใน App.tsx reducer)
+  comments: CustomComment[]; // เปลี่ยนเป็น CustomComment[]
   analytics: AppState['analytics']; // ส่งให้ AnalyticsTab (ถ้ามี)
   runningText: string; // ส่งให้ SettingsTab
   streamTitle: string; // ส่งให้ SettingsTab
@@ -36,7 +36,7 @@ interface RightPanelProps {
 }
 
 const RightPanel: FC<RightPanelProps> = (props) => {
-    const { activeTab, setActiveTab, obsStatus, comments, analytics,
+    const { activeTab, setActiveTab, obsStatus, comments,
             runningText, streamTitle, onConnectOBS, onDisconnectOBS, onSendComment,
             onUpdateRunningText, onUpdateStreamTitle, onOpenPlatformSettings, onSetModal,
             restreamChannels, onFetchRestreamChannels, onToggleRestreamChannel // Destructure props
@@ -60,7 +60,7 @@ const RightPanel: FC<RightPanelProps> = (props) => {
 
             <div className="flex-grow overflow-y-auto custom-scrollbar">
                 {activeTab === 'comments' && (
-                    <CommentsTab onSendComment={onSendComment} />
+                    <CommentsTab comments={comments} onSendComment={onSendComment} /> // ใช้ comments ที่ Destructure แล้ว
                 )}
                 {activeTab === 'channels' && (
                     <ChannelsTab

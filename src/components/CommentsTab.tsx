@@ -2,9 +2,11 @@
 import React, { useState, FC } from 'react';
 // แก้ไขชื่อไอคอนตรงนี้
 import { FaPaperPlane, FaExclamation } from 'react-icons/fa6';
+import { Comment as CustomComment } from '../types'; // เพิ่ม as CustomComment
 interface CommentsTabProps {
+     comments: CustomComment[]; // เปลี่ยนเป็น CustomComment[]
     onSendComment: (text: string) => void;
-    chatEmbedUrl: string | null;
+    chatEmbedUrl?: string | null;
 }
 
 const CommentsTab: FC<CommentsTabProps> = ({ onSendComment, chatEmbedUrl }) => {

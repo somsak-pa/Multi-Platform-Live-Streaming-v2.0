@@ -3,10 +3,10 @@ import useLocalStorage from './hooks/useLocalStorage';
 import { ObsManagementPanel } from './components/ObsManagementPanel';
 import {
     FaFacebookF, FaYoutube, FaTiktok, FaInstagram, FaBoxOpen, FaPlus, FaEye,
-    FaPlay, FaStop, FaCheckDouble, FaComments, FaChartLine, FaGear, FaPaperPlane, FaPencil,
+    FaPlay, FaStop, FaCheckDouble, FaComments, FaGear, FaPaperPlane, FaPencil,
     FaTrash, FaSun, FaMoon, FaChevronDown, FaKey, FaSatelliteDish, FaCircleCheck, FaCircleXmark,
     FaCircleInfo, FaCircleQuestion, FaEyeSlash, FaMicrophone, FaShopware,
-    FaTwitch, FaXTwitter, FaGlobe // <--- เพิ่ม Icons เหล่านี้
+    FaGlobe // <--- เพิ่ม Icons เหล่านี้
 } from 'react-icons/fa6';
 import OBSWebSocket from 'obs-websocket-js';
 
@@ -17,7 +17,7 @@ import {
     Product, Comment, OBSScene, OBSSource, OBSAudioInput, AppState, Action, RestreamChannel
 } from './types'; // ✅ นำเข้าจากไฟล์ types.ts
 import ChannelsTab from './components/ChannelsTab';
-import { dataDir } from '@tauri-apps/api/path';
+//import { dataDir } from '@tauri-apps/api/path';
 // ====================================================================
 // State Management with useReducer
 // ====================================================================
@@ -654,23 +654,6 @@ useEffect(() => {
         }
     }, [setModal]);
 
-    const handleGetOutputList = useCallback(async () => {
-        if (appState.obsStatus !== 'connected') {
-            console.log('OBS is not connected.');
-            setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'info' } });
-            return;
-        }
-        try {
-            const data = await obs.current.call('GetOutputList');
-            console.log('--- AVAILABLE OBS OUTPUTS ---');
-            console.log(data.outputs);
-            setModal({ type: 'alert', props: { message: 'ตรวจสอบ Console (F12) เพื่อดูรายชื่อ Output ทั้งหมด', alertType: 'info' } });
-        } catch (e) {
-            console.error('Failed to get output list:', e);
-            setModal({ type: 'alert', props: { message: 'ไม่สามารถดึงข้อมูล Output ได้ เกิดข้อผิดพลาด', alertType: 'error' } });
-        }
-    }, [appState.obsStatus, obs, setModal]);
-
     const handleCheckStreamSettings = useCallback(async () => {
         if (appState.obsStatus !== 'connected') return;
         try {
@@ -881,7 +864,6 @@ useEffect(() => {
                                 onCheckSettings={handleCheckStreamSettings}
                                 isObsConnected={appState.obsStatus === 'connected'}
                                 // destinations={destinations} // ลบออก
-                                handleGetOutputList={handleGetOutputList}
                             />
                         </div>
 
@@ -1034,7 +1016,7 @@ const StreamPanel: FC<{
     onCheckSettings: () => void;
     isObsConnected: boolean;
     // destinations: Destinations; // ลบออก
-    handleGetOutputList: () => void;
+
 }> = (props) => {
     const {
         isStreaming,
@@ -1047,7 +1029,7 @@ const StreamPanel: FC<{
         onCheckSettings,
         isObsConnected,
         // destinations, // ลบออก
-        handleGetOutputList
+
     } = props;
 
     // ลบ platforms และ onToggleDestination ออกไป เพราะไม่ได้ควบคุมจากหน้านี้แล้ว
