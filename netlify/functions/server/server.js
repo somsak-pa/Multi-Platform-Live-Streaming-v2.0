@@ -175,6 +175,7 @@ const handler = async (event, context) => {
             const accessToken = authHeader ? authHeader.split(' ')[1] : null;
 
             if (!accessToken) {
+                console.log('000')
                 return {
                     statusCode: 401,
                     headers: headers,
@@ -183,6 +184,8 @@ const handler = async (event, context) => {
             }
 
             try {
+                console.log('111')
+
                 // ✅ เรียก Restream API สำหรับ Chat URL
                 const response = await fetch(`${RESTREAM_API_BASE_URL}/v2/user/webchat/url`, {
                     method: 'GET',
@@ -193,9 +196,11 @@ const handler = async (event, context) => {
                 });
 
                 if (!response.ok) {
+                    console.log('222')
                     const errorText = await response.text();
                     console.error(`Error from Restream API (${response.status}) fetching chat token:`, errorText);
                     if (response.status === 401 || response.status === 403) {
+                        console.log('333')
                          // ตัวอย่าง errorText เมื่อ scope ไม่พอ: `{"error":{"statusCode":403,"code":403,"message":"Access token scope not sufficient for requested resource."`
                          return {
                             statusCode: response.status,
