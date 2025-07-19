@@ -5,20 +5,23 @@ import {
     FaFacebookF, FaYoutube, FaTiktok, FaInstagram, FaBoxOpen, FaPlus, FaEye,
     FaPlay, FaStop, FaCheckDouble, FaComments, FaGear, FaPaperPlane, FaPencil,
     FaTrash, FaSun, FaMoon, FaChevronDown, FaKey, FaSatelliteDish, FaCircleCheck, FaCircleXmark,
-    FaCircleInfo, FaCircleQuestion, FaEyeSlash, FaMicrophone, FaShopware,
-    FaGlobe // <--- เพิ่ม Icons เหล่านี้
+    FaCircleInfo, FaCircleQuestion, FaEyeSlash, FaMicrophone, FaShopware, FaUsers,
+    FaGlobe // ✅ เพิ่ม FaGlobe สำหรับ ChannelsTab
 } from 'react-icons/fa6';
 import OBSWebSocket from 'obs-websocket-js';
 
 // ====================================================================
-// Type Definitions - ย้ายไปที่ src/types.ts ทั้งหมดแล้ว
+// Type Definitions - นำเข้าจาก src/types.ts
 // ====================================================================
 import {
     Product, Comment, OBSScene, OBSSource, OBSAudioInput, AppState, Action, RestreamChannel
 } from './types'; // ✅ นำเข้าจากไฟล์ types.ts
-import ChannelsTab from './components/ChannelsTab';
-const BACKEND_API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL;
-//import { dataDir } from '@tauri-apps/api/path';
+
+// ====================================================================
+// Environment Variables
+// ====================================================================
+const BACKEND_API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL; // ✅ ใช้ Environment Variable
+const RESTREAM_API_BASE_URL = import.meta.env.RESTREAM_API_BASE_URL; // ✅ ใช้ Environment Variable
 // ====================================================================
 // State Management with useReducer
 // ====================================================================
@@ -30,7 +33,6 @@ const initialState: AppState = {
     viewerCount: 0,
     products: [],
     selectedProductId: null,
-    // activePlatforms: new Set(), // ลบออก - ไม่ได้ใช้กับ Restream Channels โดยตรงแล้ว
     comments: [],
     analytics: { totalViewers: 0, peakViewers: 0, totalComments: 0 },
     runningText: '🔥 โปรโมชั่นพิเศษ! ',
@@ -41,7 +43,7 @@ const initialState: AppState = {
     currentSceneName: null,
     sources: [],
     audioInputs: [],
-    restreamChannels: [],
+    restreamChannels: [], // ✅ เพิ่ม restreamChannels ใน initialState
 };
 
 function appReducer(state: AppState, action: Action): AppState {
@@ -89,7 +91,6 @@ function appReducer(state: AppState, action: Action): AppState {
         case 'SET_CURRENT_SCENE':
             return { ...state, currentSceneName: action.payload };
         case 'UPDATE_AUDIO_LEVELS':
-            // console.log('Updating audio levels for:', action.payload.inputName, action.payload.levels); // ลด log
             return {
                 ...state,
                 audioInputs: state.audioInputs.map(a =>
@@ -100,7 +101,7 @@ function appReducer(state: AppState, action: Action): AppState {
             };
         case 'SET_RESTREAM_CHANNELS':
             return { ...state, restreamChannels: action.payload };
-        case 'UPDATE_RESTREAM_CHANNEL_STATUS': // เพิ่ม Action ใหม่
+        case 'UPDATE_RESTREAM_CHANNEL_STATUS':
             return {
                 ...state,
                 restreamChannels: state.restreamChannels.map(channel =>
@@ -114,45 +115,130 @@ function appReducer(state: AppState, action: Action): AppState {
     }
 }
 
-// โค้ดใหม่ที่ถูกต้อง - ไม่จำเป็นต้องใช้ Destinations ตรงนี้แล้ว
-// เนื่องจากเราจะจัดการ channels ผ่าน Restream API โดยตรง
-// type Destination = {
-//   enabled: boolean;
-// };
-
-// type Destinations = {
-//   [platform: string]: Destination;
-// };
 // ====================================================================
 // Main App Component
 // ====================================================================
 const App: FC = () => {
 
     const obs = useRef(new OBSWebSocket());
-    const videoRef = useRef<HTMLVideoElement>(null); // ✅ ตรวจสอบให้แน่ใจว่าเป็น HTMLVideoElement
+    const videoRef = useRef<HTMLVideoElement>(null);
     const streamTimerRef = useRef<number | null>(null);
     const productOverlayTimerRef = useRef<number | null>(null);
 
     const [isDarkMode, setIsDarkMode] = useLocalStorage<boolean>('theme-dark', false);
     const [appState, dispatch] = useReducer(appReducer, initialState);
     const [modal, setModal] = useState<{ type: 'alert' | 'confirm' | 'product' | 'settings' | null; props?: any }>({ type: null });
-    // เพิ่ม state ใหม่สำหรับ Scene Modal
     const [sceneModal, setSceneModal] = useState<{ type: 'add' | null; props?: any }>({ type: null });
 
-        // --- เพิ่ม state สำหรับ Restream Access Token ---
-        const [restreamAccessToken, setRestreamAccessToken] = useState<string | null>(() => {
-        return localStorage.getItem('restream-access-token');
-        });
-    // -----------------------------------------------
+    const [restreamAccessToken, setRestreamAccessToken] = useState<string | null>(localStorage.getItem('restream-access-token'));
+    const [restreamRefreshToken, setRestreamRefreshToken] = useState<string | null>(localStorage.getItem('restream-refresh-token')); // ✅ restreamRefreshToken state
+    const [chatToken, setChatToken] = useState<string | null>(null); // ✅ chatToken state
 
-    // ลบ destinations state ออกไป เพราะเราจะจัดการ channels ผ่าน restream API
-    // const [destinations, setDestinations] = useLocalStorage<Destinations>('destinations', {
-    // Facebook: { enabled: false },
-    // YouTube: { enabled: false },
-    // TikTok: { enabled: false },
-    // Instagram: { enabled: false },
-    // Shopee: { enabled: false },
-    // });
+    // --- Timer Controls ---
+    const startStreamTimer = useCallback(() => {
+        if (streamTimerRef.current) clearInterval(streamTimerRef.current);
+        const startTime = Date.now();
+        streamTimerRef.current = window.setInterval(() => {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+            const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+            const s = String(elapsed % 60).padStart(2, '0');
+            dispatch({ type: 'UPDATE_TIMER', payload: `${h}:${m}:${s}` });
+        }, 1000);
+    }, [dispatch]);
+
+    const stopStreamTimer = useCallback(() => {
+        if (streamTimerRef.current) clearInterval(streamTimerRef.current);
+        streamTimerRef.current = null;
+        dispatch({ type: 'UPDATE_TIMER', payload: '00:00:00' });
+    }, [dispatch]);
+    // ✅ ฟังก์ชันใหม่สำหรับดึง Chat Token จาก Backend
+    const fetchChatToken = useCallback(async (accessToken: string) => {
+        try {
+            const response = await fetch(`${BACKEND_API_BASE_URL}/api/chat-token`, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                },
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            setChatToken(data.chatToken);
+        } catch (error) {
+            console.error("Failed to fetch chat token:", error);
+            setChatToken(null);
+        }
+    }, [BACKEND_API_BASE_URL]);
+
+        // ✅ ฟังก์ชันสำหรับดึง Restream Channels
+    const fetchRestreamChannels = useCallback(async (accessToken?: string | null) => {
+        const tokenToUse = accessToken || restreamAccessToken;
+
+        if (!tokenToUse) {
+            console.log('No Restream Access Token available. Clearing channels and skipping fetch/interval.');
+            dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: [] });
+            return;
+        }
+
+        console.log('Fetching Restream channels with token. Length:', tokenToUse.length);
+        try {
+            const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels`, {
+                headers: {
+                    'Authorization': `Bearer ${tokenToUse}`
+                }
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("Back-End API response not OK:", response.status, errorData);
+                if (response.status === 401) {
+                    setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
+                    localStorage.removeItem('restream-access-token');
+                    localStorage.removeItem('restream-refresh-token');
+                    setRestreamAccessToken(null);
+                    setRestreamRefreshToken(null);
+                }
+                throw new Error(`HTTP error! status: ${response.status} - ${JSON.stringify(errorData)}`);
+            }
+
+            const data = await response.json();
+            console.log('--- Data from Back-End (in App.tsx) ---', data);
+
+            if (Array.isArray(data)) {
+                dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: data });
+            } else if (data && Array.isArray(data.channels)) {
+                console.warn("Restream API data is an object with 'channels' key. Using data.channels.");
+                dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: data.channels });
+            } else {
+                console.error("Unexpected data format from Back-End:", data);
+                dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: [] });
+            }
+
+    } catch (error) { // ✅ error: unknown
+        console.error("Failed to fetch Restream channels:", error);
+
+        let errorMessage = 'ไม่ทราบข้อผิดพลาด'; // ข้อความเริ่มต้น
+
+        // ✅ ตรวจสอบประเภทของ error ก่อนเข้าถึง properties
+        if (error instanceof Error) {
+            errorMessage = error.message; // ถ้าเป็น Error object, ใช้ message
+        } else if (typeof error === 'string') {
+            errorMessage = error; // ถ้าเป็น string, ใช้ string นั้นเลย
+        } else {
+            errorMessage = String(error); // แปลงเป็น string
+        }
+
+        if (error instanceof Error && error.message.includes('401')) {
+            // Error 401 (Unauthorized) มักจะถูกจัดการแล้วใน if (!response.ok) block
+            // ดังนั้นตรงนี้อาจไม่ต้องทำอะไรเพิ่มเติม หรือแค่ console.log
+        } else {
+            setModal({ type: 'alert', props: { message: `ไม่สามารถดึงข้อมูลช่อง Restream ได้: ${errorMessage}`, alertType: 'error' } });
+        }
+    }
+    }, [dispatch, setRestreamAccessToken, setRestreamRefreshToken, setModal, restreamAccessToken, BACKEND_API_BASE_URL]);
+
 
     // --- Theme Effect ---
     useEffect(() => {
@@ -204,110 +290,85 @@ const App: FC = () => {
                 setModal({ type: 'alert', props: { message: 'ไม่สามารถเข้าถึงกล้องได้ ตรวจสอบว่ากล้องไม่ได้ถูกใช้งานโดยโปรแกรมอื่น', alertType: 'error' } });
             }
         };
-        // เรียกใช้ setupCamera
         setupCamera();
-        // Dependency array: videoRef และ setModal ถูกใช้ภายใน useCallback
-        // เนื่องจาก setupCamera ถูกประกาศภายใน useEffect และใช้ค่าจาก scope ของ App component
-        // จึงไม่จำเป็นต้องใส่ใน dependency array แต่ถ้าคุณประกาศ setupCamera เป็น useCallback
-        // และใช้ค่าจากภายนอก ก็ต้องใส่ใน dependency array ของ useCallback นั้นๆ
-        // ในกรณีนี้ ปล่อยให้ dependency array เป็น [] ก็เพียงพอเพราะ setModal และ videoRef ไม่ได้เปลี่ยนค่า
     }, []);
 
-
-const fetchOBSData = useCallback(async () => {
-    // console.log('[DEBUG] fetchOBSData called.'); // ลด log
-    if (!obs.current.identified) {
-        // console.warn('[DEBUG] OBS is not identified yet. Skipping data fetch.'); // ลด log
-        return;
-    }
-
-    // console.log('[DEBUG] Attempting to fetch OBS data...'); // ลด log
-    try {
-        const [sceneListData, currentSceneData, allInputListData] = await Promise.all([
-            obs.current.call('GetSceneList'),
-            obs.current.call('GetCurrentProgramScene'),
-            obs.current.call('GetInputList'),
-        ]);
-
-        // console.log('[DEBUG] Raw ALL Input List:', allInputListData.inputs); // ลด log
-
-        // **ส่วนที่เพิ่มเข้าไปเพื่อดู inputKind ของแต่ละ input**
-        // allInputListData.inputs.forEach((input: any) => { // ลด log
-        //     console.log(`[DEBUG] Input Name: ${input.inputName}, Kind: ${input.inputKind}`); // ลด log
-        // });
-
-        const currentSceneName = currentSceneData.currentProgramSceneName;
-        // console.log('[DEBUG] Current Scene Name:', currentSceneName); // ลด log
-
-        if (!currentSceneName) {
-            console.warn('[DEBUG] No current program scene found. Exiting fetchOBSData.');
+    // --- Fetch OBS Data ---
+    const fetchOBSData = useCallback(async () => {
+        if (!obs.current.identified) {
             return;
         }
+        try {
+            const [sceneListData, currentSceneData, allInputListData] = await Promise.all([
+                obs.current.call('GetSceneList'),
+                obs.current.call('GetCurrentProgramScene'),
+                obs.current.call('GetInputList'),
+            ]);
 
-        const sourceListData = await obs.current.call('GetSceneItemList', { sceneName: currentSceneName });
-        // console.log('✅ SUCCESS: Sources for current scene:', sourceListData.sceneItems); // ลด log
-
-        const sources: OBSSource[] = sourceListData.sceneItems.map((item: any) => ({
-            sceneItemId: Number(item.sceneItemId),
-            sourceName: String(item.sourceName),
-            sceneItemEnabled: Boolean(item.sceneItemEnabled)
-        }));
-
-        // กรองเฉพาะ Audio Inputs จาก allInputListData.inputs
-        const audioInputsRaw: Omit<OBSAudioInput, 'inputLevels'>[] = await Promise.all(
-            allInputListData.inputs
-                .filter((input: any) =>
-                    input.inputKind.includes('wasapi') ||
-                    input.inputKind.includes('coreaudio') ||
-                    input.inputKind.includes('pulse') || // สำหรับ Linux
-                    input.inputKind.includes('mic') // เผื่อมีบาง inputKind ใช้คำนี้
-                )
-                .map(async (input: any) => {
-                    try {
-                        const { inputMuted } = await obs.current.call('GetInputMute', { inputName: input.inputName });
-                        const { inputVolumeDb } = await obs.current.call('GetInputVolume', { inputName: input.inputName });
-
-                        return {
-                            inputName: String(input.inputName),
-                            inputMuted: Boolean(inputMuted),
-                            inputVolumeDb: Number(inputVolumeDb) || -100, // ค่าเริ่มต้น -100 สำหรับไม่พบ volume
-                        };
-                    } catch (e) {
-                        console.error(`Error fetching data for audio input ${input.inputName}:`, e);
-                        return {
-                            inputName: String(input.inputName),
-                            inputMuted: false,
-                            inputVolumeDb: -100,
-                        };
-                    }
-                })
-        );
-
-        // console.log('[DEBUG] Processed Audio Inputs (without levels):', audioInputsRaw); // ลด log
-
-        const scenes: OBSScene[] = sceneListData.scenes.map((scene: any) => ({
-            sceneName: String(scene.sceneName)
-        }));
-
-        dispatch({
-            type: 'SET_OBS_DATA',
-            payload: {
-                scenes: scenes,
-                currentSceneName: currentSceneName,
-                sources: sources,
-                audioInputs: audioInputsRaw
+            const currentSceneName = currentSceneData.currentProgramSceneName;
+            if (!currentSceneName) {
+                console.warn('[DEBUG] No current program scene found. Exiting fetchOBSData.');
+                return;
             }
-        });
 
-    } catch (e) {
-        console.error("[DEBUG] Error inside fetchOBSData:", e);
-        if (e && (e as any).code === 'NOT_IDENTIFIED') {
-             setModal({ type: 'alert', props: { message: 'การเชื่อมต่อ OBS ไม่ได้ถูกยืนยัน (Authentication Failed หรือ Timing Issue)', alertType: 'error' } });
-        } else {
-            setModal({ type: 'alert', props: { message: 'ไม่สามารถดึงข้อมูล OBS ได้ หรือเกิดข้อผิดพลาดในการประมวลผลข้อมูล', alertType: 'error' } });
+            const sourceListData = await obs.current.call('GetSceneItemList', { sceneName: currentSceneName });
+            const sources: OBSSource[] = sourceListData.sceneItems.map((item: any) => ({
+                sceneItemId: Number(item.sceneItemId),
+                sourceName: String(item.sourceName),
+                sceneItemEnabled: Boolean(item.sceneItemEnabled)
+            }));
+
+            const audioInputsRaw: Omit<OBSAudioInput, 'inputLevels'>[] = await Promise.all(
+                allInputListData.inputs
+                    .filter((input: any) =>
+                        input.inputKind.includes('wasapi') ||
+                        input.inputKind.includes('coreaudio') ||
+                        input.inputKind.includes('pulse') ||
+                        input.inputKind.includes('mic')
+                    )
+                    .map(async (input: any) => {
+                        try {
+                            const { inputMuted } = await obs.current.call('GetInputMute', { inputName: input.inputName });
+                            const { inputVolumeDb } = await obs.current.call('GetInputVolume', { inputName: input.inputName });
+
+                            return {
+                                inputName: String(input.inputName),
+                                inputMuted: Boolean(inputMuted),
+                                inputVolumeDb: Number(inputVolumeDb) || -100,
+                            };
+                        } catch (e) {
+                            console.error(`Error fetching data for audio input ${input.inputName}:`, e);
+                            return {
+                                inputName: String(input.inputName),
+                                inputMuted: false,
+                                inputVolumeDb: -100,
+                            };
+                        }
+                    })
+            );
+            const scenes: OBSScene[] = sceneListData.scenes.map((scene: any) => ({
+                sceneName: String(scene.sceneName)
+            }));
+
+            dispatch({
+                type: 'SET_OBS_DATA',
+                payload: {
+                    scenes: scenes,
+                    currentSceneName: currentSceneName,
+                    sources: sources,
+                    audioInputs: audioInputsRaw
+                }
+            });
+
+        } catch (e) {
+            console.error("[DEBUG] Error inside fetchOBSData:", e);
+            if (e && (e as any).code === 'NOT_IDENTIFIED') {
+                setModal({ type: 'alert', props: { message: 'การเชื่อมต่อ OBS ไม่ได้ถูกยืนยัน (Authentication Failed หรือ Timing Issue)', alertType: 'error' } });
+            } else {
+                setModal({ type: 'alert', props: { message: 'ไม่สามารถดึงข้อมูล OBS ได้ หรือเกิดข้อผิดพลาดในการประมวลผลข้อมูล', alertType: 'error' } });
+            }
         }
-    }
-}, [dispatch, setModal]);
+    }, [dispatch, setModal]);
 
     // --- OBS Event Listeners Effect ---
     useEffect(() => {
@@ -321,17 +382,13 @@ const fetchOBSData = useCallback(async () => {
 
         const onConnectionOpened = () => {
             dispatch({ type: 'SET_OBS_STATUS', payload: 'connected' });
-            // ไม่ต้องแจ้งเตือนตรงนี้ เพราะ Identified จะแจ้งเอง
         };
 
         const onIdentified = async () => {
             console.log('[DEBUG] OBS identified successfully!');
             dispatch({ type: 'SET_OBS_STATUS', payload: 'connected' });
             setModal({ type: 'alert', props: { message: 'เชื่อมต่อและยืนยันตัวตนกับ OBS สำเร็จ!', alertType: 'success' } });
-
-            // ขอ Input Volume Meters สำหรับ audio inputs ทั้งหมดที่ fetch มาได้
-
-            await fetchOBSData(); // เรียก fetchOBSData หลังจาก Identified แล้ว
+            await fetchOBSData();
         };
 
         const onConnectionClosed = () => {
@@ -343,10 +400,10 @@ const fetchOBSData = useCallback(async () => {
         };
 
         const onCurrentProgramSceneChanged = () => {
-            fetchOBSData(); // เรียกเมื่อ Scene เปลี่ยน
+            fetchOBSData();
         };
-        const onSceneListChanged = () => { // เพิ่ม listener สำหรับ SceneListChanged
-            fetchOBSData(); // เรียกเมื่อ Scene List เปลี่ยน (เช่น เพิ่ม/ลบ Scene)
+        const onSceneListChanged = () => {
+            fetchOBSData();
         };
         const onInputCreated = () => {
             fetchOBSData();
@@ -357,18 +414,13 @@ const fetchOBSData = useCallback(async () => {
         const onInputNameChanged = () => {
             fetchOBSData();
         };
-
-
         const onSceneItemEnableStateChanged = (data: { sceneItemId: number; sceneItemEnabled: boolean }) => {
             dispatch({ type: 'UPDATE_SOURCE_VISIBILITY', payload: data });
         };
-
         const onInputMuteStateChanged = (data: { inputName: string; inputMuted: boolean }) => {
             dispatch({ type: 'UPDATE_MUTE_STATE', payload: data });
         };
-
         const onInputVolumeMeters = (data: any) => {
-            // console.log('Input Volume Meters Event:', data); // ลด log
             if (data && Array.isArray(data.inputs)) {
                 for (const input of data.inputs) {
                     if (input.inputName && input.inputLevels) {
@@ -389,10 +441,10 @@ const fetchOBSData = useCallback(async () => {
         obsInstance.on('Identified', onIdentified);
         obsInstance.on('ConnectionClosed', onConnectionClosed);
         obsInstance.on('CurrentProgramSceneChanged', onCurrentProgramSceneChanged);
-        obsInstance.on('SceneListChanged', onSceneListChanged); // เพิ่ม
-        obsInstance.on('InputCreated', onInputCreated); // เพิ่ม
-        obsInstance.on('InputRemoved', onInputRemoved); // เพิ่ม
-        obsInstance.on('InputNameChanged', onInputNameChanged); // เพิ่ม
+        obsInstance.on('SceneListChanged', onSceneListChanged);
+        obsInstance.on('InputCreated', onInputCreated);
+        obsInstance.on('InputRemoved', onInputRemoved);
+        obsInstance.on('InputNameChanged', onInputNameChanged);
         obsInstance.on('SceneItemEnableStateChanged', onSceneItemEnableStateChanged);
         obsInstance.on('InputMuteStateChanged', onInputMuteStateChanged);
         obsInstance.on('InputVolumeMeters', onInputVolumeMeters);
@@ -403,169 +455,100 @@ const fetchOBSData = useCallback(async () => {
             obsInstance.off('Identified', onIdentified);
             obsInstance.off('ConnectionClosed', onConnectionClosed);
             obsInstance.off('CurrentProgramSceneChanged', onCurrentProgramSceneChanged);
-            obsInstance.off('SceneListChanged', onSceneListChanged); // ลบ
-            obsInstance.off('InputCreated', onInputCreated); // ลบ
-            obsInstance.off('InputRemoved', onInputRemoved); // ลบ
-            obsInstance.off('InputNameChanged', onInputNameChanged); // ลบ
+            obsInstance.off('SceneListChanged', onSceneListChanged);
+            obsInstance.off('InputCreated', onInputCreated);
+            obsInstance.off('InputRemoved', onInputRemoved);
+            obsInstance.off('InputNameChanged', onInputNameChanged);
             obsInstance.off('SceneItemEnableStateChanged', onSceneItemEnableStateChanged);
             obsInstance.off('InputMuteStateChanged', onInputMuteStateChanged);
             obsInstance.off('InputVolumeMeters', onInputVolumeMeters);
             if(obsInstance.identified) obsInstance.disconnect();
         };
-    }, [fetchOBSData, dispatch, setModal]); // เพิ่ม appState.audioInputs เข้าไปใน dependency เพื่อให้ SetInputVolumeMeters ทำงานถูกต้อง
+    }, [fetchOBSData, dispatch, setModal, startStreamTimer, stopStreamTimer]);
 
-// --- Effect สำหรับจัดการ Restream OAuth Callback ---
+    // --- Restream OAuth Callback Effect ---
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         const authStatus = urlParams.get('auth_status');
         const message = urlParams.get('message');
         const accessToken = urlParams.get('access_token');
-        const refreshToken = urlParams.get('refresh_token'); // <--- ตัวแปรนี้
+        const refreshToken = urlParams.get('refresh_token');
 
         if (authStatus) {
             if (authStatus === 'success' && accessToken) {
                         setRestreamAccessToken(accessToken);
-                        // **เพิ่มบรรทัดนี้เพื่อเก็บ refreshToken ถ้ามี**
                         if (refreshToken) {
                             localStorage.setItem('restream-refresh-token', refreshToken);
+                            setRestreamRefreshToken(refreshToken); // ✅ แก้ไข Error: value is never read
                         }
-                        setModal({ type: 'alert', props: { message: 'เชื่อมต่อ Restream สำเร็จ!', alertType: 'success' } });
+                        fetchChatToken(accessToken); // เรียกฟังก์ชันใหม่
+                        fetchRestreamChannels(accessToken); // เรียก fetch channels ด้วย
+                        setModal({ type: 'alert', props: { message: 'เชื่อมต่อ Restream สำเร็จแล้ว!', alertType: 'success' } });
+
+                        window.history.replaceState({}, document.title, window.location.pathname); // ✅ ลบ Query Parameters ออกจาก URL
+
                     } else if (authStatus === 'failed') {
                         setModal({ type: 'alert', props: { message: `เชื่อมต่อ Restream ล้มเหลว: ${decodeURIComponent(message || 'ไม่ทราบสาเหตุ')}`, alertType: 'error' } });
+                        window.history.replaceState({}, document.title, window.location.pathname); // ✅ ลบ Query Parameters ออกจาก URL
                     }
-            window.history.replaceState({}, document.title, window.location.pathname);
         }
-    }, [setRestreamAccessToken, setModal]);
+    }, [setRestreamAccessToken, setModal, fetchChatToken, fetchRestreamChannels, setRestreamRefreshToken]); // ✅ เพิ่ม setRestreamRefreshToken ใน dependency array
 
-// ใน App.tsx (ใน App component)
-const fetchRestreamChannels = useCallback(async () => {
-        try {
-            const currentAccessToken = localStorage.getItem('restream-access-token');
-            console.log('Current Access Token:', currentAccessToken);
-          if (!currentAccessToken) {
-            // ถ้าไม่มี token ใน localStorage ให้เคลียร์ channels และ return
-            dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: [] });
-            return;
-        }
 
-            console.log('Fetching Restream channels with token. Length:', currentAccessToken.length);
-            const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels`, {
-                headers: {
-                    'Authorization': `Bearer ${currentAccessToken}`
-                }
-            });
+    // --- Restream Channels Polling Effect ---
+    useEffect(() => {
+        let intervalId: number | undefined;
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error("Back-End API response not OK:", response.status, errorData);
-                if (response.status === 401) {
-                    setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
-                    localStorage.removeItem('restream-access-token');
-                    setRestreamAccessToken(null); // ทำให้ state ใน App component อัปเดตด้วย
-                }
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            console.log('--- Data from Back-End (in App.tsx) ---', data);
-
-            if (Array.isArray(data)) {
-                dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: data });
-            } else if (data && Array.isArray(data.channels)) {
-                console.warn("Restream API data is an object with 'channels' key. Using data.channels.");
-                dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: data.channels });
-            } else {
-                console.error("Unexpected data format from Back-End:", data);
+        const initiateFetchAndInterval = async () => {
+            if (!restreamAccessToken) {
+                console.log('No Restream Access Token available. Clearing channels and skipping fetch/interval.');
                 dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: [] });
+                return;
             }
 
-        } catch (error) {
-            console.error("Failed to fetch Restream channels:", error);
-            // ไม่ต้อง dispatch SET_RESTREAM_CHANNELS here, let the main useEffect handle it
-            // if (error instanceof Error && error.message.includes('401')) {
-            //     // Already handled above
-            // } else {
-            //     setModal({ type: 'alert', props: { message: 'ไม่สามารถดึงข้อมูลช่อง Restream ได้', alertType: 'error' } });
-            // }
-        }
-}, [dispatch, setRestreamAccessToken]);
+            console.log('Restream Access Token exists. Starting channel fetch and interval.');
+            await fetchRestreamChannels();
 
-// ใน App.tsx (ใน App component)
-useEffect(() => {
-    let intervalId: number | undefined; // ใช้ undefined แทน null เพื่อความชัดเจน
+            intervalId = window.setInterval(fetchRestreamChannels, 30000); // Poll every 30 seconds
+        };
 
-    // สร้างฟังก์ชันภายใน useEffect เพื่อลด dependencies ของ useCallback
-    // หรือคง useCallback ไว้ตามเดิม แต่ต้องแน่ใจว่ามันไม่ทำให้เกิด loop
-    const initiateFetchAndInterval = async () => {
-        if (!restreamAccessToken) {
-            console.log('No Restream Access Token available. Clearing channels and skipping fetch/interval.');
-            dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: [] });
-            return;
-        }
+        initiateFetchAndInterval();
 
-        console.log('Restream Access Token exists. Starting channel fetch and interval.');
-        // เรียก fetch ทันที
-        await fetchRestreamChannels();
+        return () => {
+            if (intervalId) {
+                window.clearInterval(intervalId);
+            }
+            console.log('Restream channels useEffect cleanup.');
+        };
+    }, [restreamAccessToken, fetchRestreamChannels, dispatch]);
 
-        // ตั้ง interval
-        intervalId = window.setInterval(fetchRestreamChannels, 30000);
-    };
-
-    initiateFetchAndInterval(); // เรียกใช้ฟังก์ชันนี้ทันทีที่ effect ทำงาน
-
-    // Cleanup function
-    return () => {
-        if (intervalId) {
-            window.clearInterval(intervalId);
-        }
-        console.log('Restream channels useEffect cleanup.');
-    };
-    // Dependencies ที่ควรมี: restreamAccessToken และ fetchRestreamChannels
-    // dispatch ไม่จำเป็นต้องอยู่ในนี้ถ้ามันไม่ได้ถูกใช้ใน initiateFetchAndInterval โดยตรง
-    // แต่ถ้า dispatch ถูกใช้ใน fetchRestreamChannels (ซึ่งถูกใช้), ก็ควรอยู่ใน dependency ของ fetchRestreamChannels
-    // และถ้า fetchRestreamChannels ถูกสร้างด้วย useCallback โดยมี dispatch ใน dependency ของมัน
-    // มันก็จะไม่ re-create บ่อยๆ และจะทำงานถูกต้อง
-}, [restreamAccessToken, fetchRestreamChannels, dispatch]); // คง dispatch ไว้เพื่อความปลอดภัย
-
-
+    // --- Persist Restream Access Token to Local Storage ---
     useEffect(() => {
         if (restreamAccessToken) {
             localStorage.setItem('restream-access-token', restreamAccessToken);
+            if (restreamRefreshToken) { // ✅ บันทึก refresh token ด้วย
+                localStorage.setItem('restream-refresh-token', restreamRefreshToken);
+            }
         } else {
             localStorage.removeItem('restream-access-token');
+            localStorage.removeItem('restream-refresh-token'); // ✅ ลบ refresh token ด้วยเมื่อ access token หายไป
         }
-    }, [restreamAccessToken]);
+    }, [restreamAccessToken, restreamRefreshToken]); // ✅ เพิ่ม restreamRefreshToken ใน Dependency Array
 
-    // --- Timer Controls ---
-    const startStreamTimer = useCallback(() => {
-        if (streamTimerRef.current) clearInterval(streamTimerRef.current);
-        const startTime = Date.now();
-        streamTimerRef.current = window.setInterval(() => {
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
-            const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
-            const s = String(elapsed % 60).padStart(2, '0');
-            dispatch({ type: 'UPDATE_TIMER', payload: `${h}:${m}:${s}` });
-        }, 1000);
-    }, [dispatch]);
 
-    const stopStreamTimer = useCallback(() => {
-        if (streamTimerRef.current) clearInterval(streamTimerRef.current);
-        streamTimerRef.current = null;
-        dispatch({ type: 'UPDATE_TIMER', payload: '00:00:00' });
-    }, [dispatch]);
 
-    // --- Handlers ---
+
+    // --- OBS Handlers ---
     const handleConnectOBS = useCallback(async (ip: string, port: string, password: string, savePassword: boolean) => {
         dispatch({ type: 'SET_OBS_STATUS', payload: 'connecting' });
         try {
             await obs.current.connect(`ws://${ip}:${port}`, password, {
                 eventSubscriptions:
                     (1 << 0) | // General (e.g., Identified, ExitStarted)
-                    (1 << 1) | // Config (e.g., CurrentProfileChanged) - ไม่จำเป็นต้องใช้
+                    (1 << 1) | // Config (e.g., CurrentProfileChanged)
                     (1 << 2) | // Scenes (CurrentProgramSceneChanged, SceneListChanged)
                     (1 << 3) | // Inputs (InputCreated, InputRemoved, InputMuteStateChanged)
-                    (1 << 5) | // Inputs (InputMuteStateChanged, InputVolumeMeters) // ตรงนี้ซ้ำกับ 1<<3
+                    (1 << 5) | // Inputs (InputMuteStateChanged, InputVolumeMeters)
                     (1 << 6) | // Transitions
                     (1 << 7) | // Filters
                     (1 << 8) | // Outputs (StreamStateChanged)
@@ -618,7 +601,6 @@ useEffect(() => {
             await obs.current.disconnect();
         } catch (e) {
             console.error('Error disconnecting OBS:', e);
-            // อาจจะไม่มี error ตรงนี้ แต่ถ้ามีก็ควรแจ้ง
         }
     }, []);
 
@@ -627,16 +609,13 @@ useEffect(() => {
             setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
             return;
         }
-
         if (appState.isStreaming) {
             setModal({ type: 'alert', props: { message: 'กำลังสตรีมอยู่แล้ว', alertType: 'info' } });
             return;
         }
-
         try {
             console.log("🚀 Attempting to start the main stream to Restream.io...");
             await obs.current.call('StartStream');
-
         } catch (error: any) {
             console.error("❌ Failed to start stream:", error);
             let errorMessage = error.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก';
@@ -694,52 +673,6 @@ useEffect(() => {
         setModal({ type: 'alert', props: { message: id ? 'แก้ไขข้อมูลสำเร็จ!' : 'เพิ่มสินค้าสำเร็จ!', alertType: 'success' } });
     }, [appState.products, dispatch, setModal]);
 
-       // เพิ่มฟังก์ชันใหม่สำหรับการ Toggle สถานะของ Restream Channel
-        const handleToggleRestreamChannel = useCallback(async (channelId: number, currentEnabledState: boolean) => {
-            const currentAccessToken = localStorage.getItem('restream-access-token');
-            if (!currentAccessToken) {
-                setModal({ type: 'alert', props: { message: 'ไม่มี Token สำหรับ Restream.io กรุณาเชื่อมต่อบัญชีใหม่', alertType: 'error' } });
-                return;
-                }
-            // *** เพิ่มการแปลงค่าให้เป็น boolean ชัดเจนก่อนส่ง ***
-                const newEnabledState = Boolean(!currentEnabledState); // ยืนยันว่าเป็น boolean
-
-            try {
-                const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels/${channelId}`, {
-
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentAccessToken}`
-                    },
-                    body: JSON.stringify({ enabled: newEnabledState }) // สลับสถานะ
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    if (response.status === 401) {
-                         setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
-                         localStorage.removeItem('restream-access-token');
-                         setRestreamAccessToken(null);
-                    }
-                    throw new Error(`Failed to update channel status: ${errorData.message || response.statusText}`);
-                }
-
-                const updatedChannel = await response.json();
-                ///console.log('Channel updated:', data.channel);
-                // อัปเดต state ใน App component ทันที
-                dispatch({
-                    type: 'UPDATE_RESTREAM_CHANNEL_STATUS',
-                    payload: { channelId: channelId, enabled: updatedChannel.enabled }
-                });
-                setModal({ type: 'alert', props: { message: `เปิดการถ่ายทอดสด สำเร็จ!`, alertType: 'success' } });
-
-            } catch (error) {
-                console.error('Error toggling Restream channel status:', error);
-                setModal({ type: 'alert', props: { message: `ไม่สามารถอัปเดตสถานะช่องได้: ${(error as Error).message}`, alertType: 'error' } });
-            }
-        }, [setModal, setRestreamAccessToken, dispatch]);
-
     const handleDeleteProduct = useCallback((id: number) => {
         setModal({
             type: 'confirm',
@@ -783,8 +716,7 @@ useEffect(() => {
         try {
             await obs.current.call('CreateScene', { sceneName });
             setModal({ type: 'alert', props: { message: `เพิ่ม Scene "${sceneName}" สำเร็จ!`, alertType: 'success' } });
-            setSceneModal({ type: null }); // ปิด modal
-            // OBS จะส่ง SceneListChanged event ซึ่งจะเรียก fetchOBSData() ให้อัปเดต UI เอง
+            setSceneModal({ type: null });
         } catch (e: any) {
             console.error('Failed to add scene:', e);
             setModal({ type: 'alert', props: { message: `ไม่สามารถเพิ่ม Scene ได้: ${e.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
@@ -804,7 +736,6 @@ useEffect(() => {
                     try {
                         await obs.current.call('RemoveScene', { sceneName });
                         setModal({ type: 'alert', props: { message: `ลบ Scene "${sceneName}" สำเร็จ!`, alertType: 'success' } });
-                        // OBS จะส่ง SceneListChanged event ซึ่งจะเรียก fetchOBSData() ให้อัปเดต UI เอง
                     } catch (e: any) {
                         console.error('Failed to remove scene:', e);
                         setModal({ type: 'alert', props: { message: `ไม่สามารถลบ Scene ได้: ${e.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
@@ -814,6 +745,85 @@ useEffect(() => {
         });
     }, [setModal]);
 
+
+
+    // ✅ ฟังก์ชันสำหรับเริ่มต้น Restream OAuth
+    const handleConnectRestream = useCallback(async () => {
+        try {
+            const response = await fetch(`${BACKEND_API_BASE_URL}/api/auth/restream`);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Backend Error Response:', errorText);
+                throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+            }
+            const data = await response.json();
+            if (data.authUrl) {
+                window.location.href = data.authUrl;
+            } else {
+                setModal({ type: 'alert', props: { message: 'ไม่สามารถสร้าง URL สำหรับเชื่อมต่อ Restream ได้', alertType: 'error' } });
+            }
+        } catch (error) {
+            console.error('Error initiating Restream OAuth:', error);
+            let errorMessage = 'ไม่ทราบข้อผิดพลาด';
+            if (error instanceof Error) {
+                errorMessage = error.message;
+            } else if (typeof error === 'string') {
+                errorMessage = error;
+            } else {
+                errorMessage = String(error);
+            }
+            setModal({ type: 'alert', props: { message: `เกิดข้อผิดพลาดในการเริ่มต้นเชื่อมต่อ Restream: ${errorMessage}`, alertType: 'error' } });
+        }
+    }, [BACKEND_API_BASE_URL, setModal]);
+
+
+    // ✅ ฟังก์ชันสำหรับ Toggle สถานะ Channel (เปิด/ปิด)
+    const handleToggleRestreamChannel = useCallback(async (channelId: number, currentEnabledState: boolean) => {
+        const tokenToUse = restreamAccessToken || localStorage.getItem('restream-access-token');
+        if (!tokenToUse) {
+            setModal({ type: 'alert', props: { message: 'ไม่มี Token สำหรับ Restream.io กรุณาเชื่อมต่อบัญชีใหม่', alertType: 'info' } });
+            return;
+        }
+
+        const newEnabledState = !currentEnabledState; // สลับสถานะ
+
+        try {
+            const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels/${channelId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${tokenToUse}`
+                },
+                body: JSON.stringify({ enabled: newEnabledState })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                if (response.status === 401) {
+                     setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
+                     localStorage.removeItem('restream-access-token');
+                     localStorage.removeItem('restream-refresh-token');
+                     setRestreamAccessToken(null);
+                     setRestreamRefreshToken(null);
+                }
+                throw new Error(`Failed to update channel status: ${errorData.message || response.statusText}`);
+            }
+
+            const updatedChannel = await response.json();
+            dispatch({
+                type: 'UPDATE_RESTREAM_CHANNEL_STATUS',
+                payload: { channelId: channelId, enabled: updatedChannel.active } // ใช้ updatedChannel.active ตาม Restream API response
+            });
+            setModal({ type: 'alert', props: { message: `อัปเดตสถานะช่อง ${updatedChannel.displayName || updatedChannel.name} เป็น ${newEnabledState ? 'เปิด' : 'ปิด'} สำเร็จ!`, alertType: 'success' } });
+
+        } catch (error) {
+            console.error('Error toggling Restream channel status:', error);
+            setModal({ type: 'alert', props: { message: `ไม่สามารถอัปเดตสถานะช่องได้: ${(error as Error).message}`, alertType: 'error' } });
+        }
+    }, [restreamAccessToken, fetchRestreamChannels, setModal, setRestreamAccessToken, setRestreamRefreshToken, dispatch, BACKEND_API_BASE_URL]);
+
+
     const obsStatusMap = {
         connected: { text: 'Connected', iconColor: 'bg-green-500' },
         connecting: { text: 'Connecting', iconColor: 'bg-yellow-500 animate-pulse' },
@@ -821,7 +831,6 @@ useEffect(() => {
         disconnected: { text: 'Disconnected', iconColor: 'bg-gray-400' }
     };
     const currentObsStatus = obsStatusMap[appState.obsStatus];
-    // console.log('appState.restreamChannels in App.tsx before sending to RightPanel:', appState.restreamChannels); // ลด log
 
     return (
         <div className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300 min-h-screen font-sans`}>
@@ -865,7 +874,6 @@ useEffect(() => {
                                 onStopStream={handleStopStream}
                                 onCheckSettings={handleCheckStreamSettings}
                                 isObsConnected={appState.obsStatus === 'connected'}
-                                // destinations={destinations} // ลบออก
                             />
                         </div>
 
@@ -874,6 +882,7 @@ useEffect(() => {
                                 activeTab={appState.activeRightTab}
                                 setActiveTab={(tab) => dispatch({ type: 'SET_STATE', payload: { activeRightTab: tab } })}
                                 obsStatus={appState.obsStatus}
+                                comments={appState.comments}
                                 analytics={appState.analytics}
                                 runningText={appState.runningText}
                                 streamTitle={appState.streamTitle}
@@ -886,7 +895,9 @@ useEffect(() => {
                                 onSetModal={setModal}
                                 restreamChannels={appState.restreamChannels}
                                 onFetchRestreamChannels={fetchRestreamChannels}
-                                onToggleRestreamChannel={handleToggleRestreamChannel} // ส่งฟังก์ชันนี้ไป
+                                onToggleRestreamChannel={handleToggleRestreamChannel}
+                                chatToken={chatToken}
+                                handleConnectRestream={handleConnectRestream}
                             />
                         </div>
                     </div>
@@ -910,7 +921,7 @@ useEffect(() => {
             {modal.type === 'alert' && <AlertModal {...modal.props} onClose={() => setModal({ type: null })} />}
             {modal.type === 'confirm' && <ConfirmModal {...modal.props} onClose={() => setModal({ type: null })} />}
             {modal.type === 'product' && <ProductModal {...modal.props} onClose={() => setModal({ type: null })} />}
-            {modal.type === 'settings' && <SettingsModal {...modal.props} obs={obs.current} isConnected={appState.obsStatus === 'connected'} onClose={() => setModal({ type: null })} onAlert={(props) => setModal({type: 'alert', props})} />}
+            {modal.type === 'settings' && <SettingsModal {...modal.props} obs={obs.current} isConnected={appState.obsStatus === 'connected'} onClose={() => setModal({ type: null })} onAlert={(props) => setModal({type: 'alert', props})} handleConnectRestream={handleConnectRestream} />}
             {sceneModal.type === 'add' && <AddSceneModal onAdd={handleAddScene} onClose={() => setSceneModal({ type: null })} />}
 
         </div>
@@ -921,7 +932,6 @@ useEffect(() => {
 // UI Components
 // ====================================================================
 
-// เพิ่ม Component ใหม่สำหรับ Add Scene Modal
 const AddSceneModal: FC<{ onAdd: (sceneName: string) => void; onClose: () => void; }> = ({ onAdd, onClose }) => {
     const [sceneName, setSceneName] = useState('');
 
@@ -930,7 +940,7 @@ const AddSceneModal: FC<{ onAdd: (sceneName: string) => void; onClose: () => voi
         if (sceneName.trim()) {
             onAdd(sceneName.trim());
         } else {
-            alert('กรุณากรอกชื่อ Scene'); // สามารถเปลี่ยนเป็น setModal alert ได้
+            alert('กรุณากรอกชื่อ Scene');
         }
     };
 
@@ -1017,8 +1027,6 @@ const StreamPanel: FC<{
     onStopStream: () => void;
     onCheckSettings: () => void;
     isObsConnected: boolean;
-    // destinations: Destinations; // ลบออก
-
 }> = (props) => {
     const {
         isStreaming,
@@ -1030,33 +1038,13 @@ const StreamPanel: FC<{
         onStopStream,
         onCheckSettings,
         isObsConnected,
-        // destinations, // ลบออก
-
     } = props;
-
-    // ลบ platforms และ onToggleDestination ออกไป เพราะไม่ได้ควบคุมจากหน้านี้แล้ว
 
     return (
         <>
-            {/* ลบส่วน Platform Selection (Grid) ออกไป */}
-            {/* <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-2">
-                {platforms.map(p => (
-                    <button
-                        key={p.id}
-                        onClick={() => onToggleDestination(p.id)}
-                        className={`platform-btn p-2 text-sm rounded-lg font-semibold transition-all duration-300 flex items-center justify-center ${
-                            destinations[p.id]?.enabled
-                                ? p.color + ' text-white'
-                                : 'bg-gray-200 dark:bg-gray-700'
-                        }`}
-                    >
-                        {p.icon}<span className="hidden sm:inline-block md:inline ml-1 text-xs">{p.name}</span>
-                    </button>
-                ))}
-            </div> */}
             <div className="flex-grow bg-black rounded-lg relative overflow-hidden min-h-0">
                 <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline></video>
-                <div className={`absolute top-3 left-3 px-3 py-1 text-sm font-bold text-white rounded-full transition-all ${isStreaming ? 'bg-red-600 pulse-live-animation' : 'bg-gray-500'}`}>
+                <div className="absolute top-3 left-3 px-3 py-1 text-sm font-bold text-white rounded-full transition-all ${isStreaming ? 'bg-red-600 pulse-live-animation' : 'bg-gray-500'}">
                     {isStreaming ? 'LIVE' : 'OFFLINE'}
                 </div>
                 <div className="absolute bottom-3 left-3 px-3 py-1 text-sm font-bold text-white rounded bg-black/50">{streamTime}</div>
@@ -1071,10 +1059,9 @@ const StreamPanel: FC<{
                 </div>
             </div>
             <div className="mt-auto pt-4 grid grid-cols-3 gap-3">
-                <button onClick={onStartStream} disabled={!isObsConnected || isStreaming} className="control-btn bg-green-600 hover:bg-green-700 rounded-lg text-white  px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaPlay className="mr-2" />เริ่มไลฟ์</button>
-                <button onClick={onStopStream} disabled={!isObsConnected || !isStreaming} className="control-btn bg-red-600 hover:bg-red-700 rounded-lg text-white  px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaStop className="mr-2" />หยุดไลฟ์</button>
-                <button onClick={onCheckSettings} disabled={!isObsConnected} className="control-btn bg-yellow-500 hover:bg-yellow-600 rounded-lg text-white  px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaCheckDouble className="mr-2" />ตรวจสอบค่า</button>
-                {/* <button onClick={handleGetOutputList} className="bg-purple-600 ...">Test: Get Output List</button> */} {/* คอมเมนต์ปุ่มนี้ไว้เพื่อไม่ให้รบกวน UI หลัก */}
+                <button onClick={onStartStream} disabled={!isObsConnected || isStreaming} className="control-btn bg-green-600 hover:bg-green-700 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaPlay className="mr-2" />เริ่มไลฟ์</button>
+                <button onClick={onStopStream} disabled={!isObsConnected || !isStreaming} className="control-btn bg-red-600 hover:bg-red-700 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaStop className="mr-2" />หยุดไลฟ์</button>
+                <button onClick={onCheckSettings} disabled={!isObsConnected} className="control-btn bg-yellow-500 hover:bg-yellow-600 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaCheckDouble className="mr-2" />ตรวจสอบค่า</button>
             </div>
         </>
     );
@@ -1085,25 +1072,27 @@ const RightPanel: FC<{
     activeTab: AppState['activeRightTab'];
     setActiveTab: (tab: AppState['activeRightTab']) => void;
     obsStatus: AppState['obsStatus'];
-    onSendComment: (text: string) => void;
+    comments: Comment[];
     analytics: AppState['analytics'];
-    restreamChannels: RestreamChannel[];
     runningText: string;
     streamTitle: string;
     onConnectOBS: (ip: string, port: string, pass: string, save: boolean) => void;
     onDisconnectOBS: () => void;
+    onSendComment: (text: string) => void;
     onUpdateRunningText: (text: string) => void;
     onUpdateStreamTitle: (title: string) => void;
     onOpenPlatformSettings: (platform: string) => void;
     onSetModal: React.Dispatch<React.SetStateAction<{ type: 'alert' | 'confirm' | 'product' | 'settings' | null; props?: any }>>;
+    restreamChannels: RestreamChannel[];
     onFetchRestreamChannels: () => void;
-    onToggleRestreamChannel: (channelId: number, currentEnabledState: boolean) => void; // เพิ่ม prop นี้
+    onToggleRestreamChannel: (channelId: number, currentEnabledState: boolean) => void;
+    chatToken: string | null; // ✅ รับ chatToken Prop
+    handleConnectRestream: () => void;
 }> = (props) => {
-    const { activeTab, setActiveTab, onSetModal, onSendComment, restreamChannels, onFetchRestreamChannels, onToggleRestreamChannel } = props;
-    // console.log('restreamChannels received in RightPanel:', restreamChannels); // ลด log
+    const { activeTab, setActiveTab, onSetModal, onSendComment, restreamChannels, onFetchRestreamChannels, onToggleRestreamChannel, chatToken, comments } = props; // ✅ รับ comments
     const tabs = [
         { id: 'comments', name: 'คอมเมนต์', icon: <FaComments /> },
-        { id: 'channels', name: 'ช่องสตรีม', icon: <FaGlobe /> }, // เปลี่ยน icon และชื่อให้เหมาะสมกับ "ช่องสตรีม"
+        { id: 'channels', name: 'ช่องสตรีม', icon: <FaGlobe /> }, // ✅ Icon FaGlobe
         { id: 'settings', name: 'ตั้งค่า', icon: <FaGear /> },
     ] as const;
 
@@ -1118,12 +1107,12 @@ const RightPanel: FC<{
             </div>
 
             <div className="flex-grow overflow-y-auto custom-scrollbar">
-                {activeTab === 'comments' && <CommentsTab onSendComment={onSendComment} />}
+                {activeTab === 'comments' && <CommentsTab comments={comments} onSendComment={onSendComment} chatToken={chatToken} />} {/* ✅ ส่ง comments และ chatToken ให้ CommentsTab */}
                 {activeTab === 'channels' && (
                 <ChannelsTab
                     restreamChannels={restreamChannels}
                     onFetchRestreamChannels={onFetchRestreamChannels}
-                    onToggleChannelEnabled={onToggleRestreamChannel} // ส่งฟังก์ชันไป
+                    onToggleChannelEnabled={onToggleRestreamChannel}
                 />
             )}
                 {activeTab === 'settings' && <SettingsTab {...props} onSetModal={onSetModal} />}
@@ -1132,37 +1121,45 @@ const RightPanel: FC<{
     );
 };
 
-const CommentsTab: FC<{ onSendComment: (text: string) => void }> = ({ onSendComment }) => { // ต้องรับ props onSendComment
-    // ใช้ embed URL จาก Restream.io สำหรับ Live Chat
-    // คุณต้องเข้าไปตั้งค่าใน Restream.io Dashboard ของคุณเพื่อดึง Embed URL สำหรับแชทของคุณเอง
-    // ตัวอย่าง: https://restream.io/chat-embed/
-    // หากไม่มี token หรือไม่ต้องการใช้ embed สามารถเปลี่ยนมาใช้ component แสดงคอมเมนต์ปกติได้
-    const restreamChatEmbedUrl = "https://chat.restream.io/embed?token=1ea9fb4c-afd3-4761-b29e-2c5dfeb76e22"; // <<--- เปลี่ยนเป็น Token ของคุณ
-    const [commentInput, setCommentInput] = useState(''); // เพิ่ม state สำหรับ input
+const CommentsTab: FC<{ comments: Comment[]; onSendComment: (text: string) => void; chatToken: string | null; }> = ({ comments, onSendComment, chatToken }) => { // ✅ รับ comments และ chatToken
+    const [commentInput, setCommentInput] = useState('');
+    const listRef = useRef<HTMLDivElement>(null);
+
+    const embedUrl = chatToken ? `${RESTREAM_API_BASE_URL}/embed?token=${chatToken}` : ''; // ✅ สร้าง URL จาก chatToken
+
+    useEffect(() => {
+        listRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [comments]);
 
     const handleSend = () => {
         if (commentInput.trim()) {
             onSendComment(commentInput.trim());
-            setCommentInput(''); // ล้าง input หลังจากส่ง
+            setCommentInput('');
         }
     };
 
     const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) { // กด Enter เพื่อส่ง (Shift + Enter สำหรับขึ้นบรรทัดใหม่ถ้าใช้ textarea)
-            e.preventDefault(); // ป้องกันการขึ้นบรรทัดใหม่
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
             handleSend();
         }
     };
 
     return (
-        <div className="h-full w-full flex flex-col"> {/* เปลี่ยนเป็น flex-col เพื่อจัด layout */}
-            <div className="flex-grow"> {/* ส่วนของ iframe ให้เต็มพื้นที่ที่เหลือ */}
-                <iframe
-                    src={restreamChatEmbedUrl}
-                    frameBorder="0"
-                    className="w-full h-full"
-                    title="Restream Embedded Chat"
-                ></iframe>
+        <div className="h-full w-full flex flex-col">
+            <div className="flex-grow">
+                {embedUrl ? ( // ✅ แสดง iframe ถ้ามี embedUrl
+                    <iframe
+                        src={embedUrl}
+                        frameBorder="0"
+                        className="w-full h-full"
+                        title="Restream Embedded Chat"
+                    ></iframe>
+                ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+                        <p>เชื่อมต่อ Restream เพื่อดูแชทสด...</p>
+                    </div>
+                )}
             </div>
             <div className="mt-4 p-2 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center">
                 <input
@@ -1185,54 +1182,73 @@ const CommentsTab: FC<{ onSendComment: (text: string) => void }> = ({ onSendComm
     );
 };
 
+// ✅ ChannelsTab (Component ใหม่ใน App.tsx)
+interface ChannelsTabProps {
+    restreamChannels: RestreamChannel[];
+    onFetchRestreamChannels: () => void;
+    onToggleChannelEnabled: (channelId: number, currentEnabledState: boolean) => void;
+}
+const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamChannels, onToggleChannelEnabled }) => {
+    useEffect(() => {
+        onFetchRestreamChannels(); // ดึง channels เมื่อ component mount
+    }, [onFetchRestreamChannels]);
 
-const SettingsTab: FC<Omit<Parameters<typeof RightPanel>[0], 'comments' | 'analytics' | 'activeTab' | 'setActiveTab' | 'onSendComment' | 'restreamChannels' | 'onFetchRestreamChannels' | 'onToggleRestreamChannel'>> = (props) => {
-    const { obsStatus, runningText, streamTitle, onConnectOBS, onDisconnectOBS, onUpdateRunningText, onUpdateStreamTitle, onOpenPlatformSettings, onSetModal } = props;
-    const [localRunningText, setLocalRunningText] = useState(runningText);
+    return (
+        <div className="space-y-4">
+            <h3 className="font-bold text-lg mb-2">ช่องสตรีมของคุณ</h3>
+            {restreamChannels.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400">
+                    ยังไม่มีช่องสตรีม Restream หรือยังไม่ได้เชื่อมต่อ.
+                    ไปที่ <span className="font-semibold text-blue-500 cursor-pointer" onClick={() => {/* logic to switch to settings tab */}}>ตั้งค่า</span> เพื่อเชื่อมต่อ.
+                </p>
+            ) : (
+                <div className="grid grid-cols-1 gap-3">
+                    {restreamChannels.map(channel => (
+                        <div key={channel.id} className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className={`w-3 h-3 rounded-full ${channel.enabled ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                <span className="font-semibold">{channel.name}</span>
+                                <span className="text-sm text-gray-500 dark:text-gray-400">({channel.platform})</span>
+                            </div>
+                            <button
+                                onClick={() => onToggleChannelEnabled(channel.id, channel.enabled)}
+                                className={`px-3 py-1 rounded-full text-white text-xs font-semibold
+                                    ${channel.enabled ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
+                            >
+                                {channel.enabled ? 'ปิด' : 'เปิด'}
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
-        // --- เพิ่มฟังก์ชันสำหรับเชื่อมต่อ Restream ---
-        const handleConnectRestream = async () => {
-            try {
 
-                const response = await fetch(`${BACKEND_API_BASE_URL}/api/auth/restream`);
-
-                if (!response.ok) {
-                    // หาก Backend ส่งสถานะ Error (เช่น 4xx, 5xx)
-                    // ลองอ่านข้อความ Error จาก Backend ถ้ามี
-                    const errorText = await response.text(); // อ่านเป็น text ก่อน
-                    console.error('Backend Error Response:', errorText);
-                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-                }
-                const data = await response.json();
-                if (data.authUrl) {
-                    window.location.href = data.authUrl;
-                } else {
-                    onSetModal({ type: 'alert', props: { message: 'ไม่สามารถสร้าง URL สำหรับเชื่อมต่อ Restream ได้', alertType: 'error' } });
-                }
-            } catch (error) { // ✅ error: unknown
-                console.error('Error initiating Restream OAuth:', error);
-
-                let errorMessage = 'ไม่ทราบข้อผิดพลาด'; // ข้อความเริ่มต้น
-
-                // ✅ ตรวจสอบประเภทของ error ก่อนเข้าถึง properties
-                if (error instanceof Error) {
-                    errorMessage = error.message; // ถ้าเป็น Error object, ใช้ message
-                } else if (typeof error === 'string') {
-                    errorMessage = error; // ถ้าเป็น string, ใช้ string นั้นเลย
-                } else {
-                    // กรณีอื่นๆ เช่น เป็น object ทั่วไป
-                    errorMessage = String(error); // แปลงเป็น string
-                }
-
-                onSetModal({ type: 'alert', props: { message: `เกิดข้อผิดพลาดในการเริ่มต้นเชื่อมต่อ Restream: ${errorMessage}`, alertType: 'error' } });
-            }
-        };
-        // ------------------------------------------
+const SettingsTab: FC<{
+    obsStatus: AppState['obsStatus'];
+    runningText: string;
+    streamTitle: string;
+    onConnectOBS: (ip: string, port: string, pass: string, save: boolean) => void;
+    onDisconnectOBS: () => void;
+    onUpdateRunningText: (text: string) => void;
+    onUpdateStreamTitle: (title: string) => void;
+    onOpenPlatformSettings: (platform: string) => void;
+    onSetModal: React.Dispatch<React.SetStateAction<{ type: 'alert' | 'confirm' | 'product' | 'settings' | null; props?: any }>>;
+    onFetchRestreamChannels: () => void; // ถ้า SettingsTab ต้องใช้
+    handleConnectRestream: () => void; // ✅ รับ handleConnectRestream
+}> = (props) => {
+    const { obsStatus, runningText, streamTitle, onConnectOBS, onDisconnectOBS, onUpdateRunningText, onUpdateStreamTitle, onOpenPlatformSettings, onSetModal, onFetchRestreamChannels, handleConnectRestream } = props;
+    const [localRunningText, setLocalRunningText] = useState(runningText); // เพิ่ม local state เพื่อให้ input ทำงานได้
+    useEffect(() => { // Sync local state with prop
+        setLocalRunningText(runningText);
+    }, [runningText]);
 
     return (
         <div className="space-y-6">
             <OBSSettings onConnect={onConnectOBS} onDisconnect={onDisconnectOBS} status={obsStatus} />
-{/* --- ส่วนใหม่สำหรับ Restream Integration --- */}
+            {/* --- ส่วนใหม่สำหรับ Restream Integration --- */}
             <div className="bg-gray-100 dark:bg-gray-700/50 p-4 rounded-lg">
                 <h3 className="font-semibold mb-3">เชื่อมต่อ Restream.io</h3>
                 <button
@@ -1348,6 +1364,7 @@ const PlatformDestinationSettings: FC<{onOpen: (platform: string) => void}> = ({
         { id: 'instagram', icon: <FaInstagram className="text-pink-500" /> },
         { id: 'shopee', icon: <FaShopware className="text-orange-500" /> },
         { id: 'custom', icon: <FaSatelliteDish className="text-teal-400" /> },
+        { id: 'restream', icon: <FaGlobe className="text-purple-500" /> } // ✅ เพิ่ม restream
     ];
     return (
         <div className="bg-gray-100 dark:bg-gray-700/50 p-4 rounded-lg">
@@ -1359,20 +1376,26 @@ const PlatformDestinationSettings: FC<{onOpen: (platform: string) => void}> = ({
     );
 };
 
-const DisplaySettings: FC<{streamTitle: string; runningText: string; onStreamTitleChange: (text: string) => void; onRunningTextChange: (text: string) => void; onUpdate: () => void}> = ({ streamTitle, runningText, onStreamTitleChange, onRunningTextChange, onUpdate }) => (
-    <div className="bg-gray-100 dark:bg-gray-700/50 p-4 rounded-lg">
-        <h3 className="font-semibold mb-3">ตั้งค่าการแสดงผล</h3>
-        <div>
-            <label htmlFor="stream-title-input" className="block mb-2 font-semibold">ชื่อเรื่องไลฟ์</label>
-            <input type="text" id="stream-title-input" value={streamTitle} onChange={e => onStreamTitleChange(e.target.value)} placeholder="ใส่ชื่อเรื่องของไลฟ์สตรีม" className="w-full p-3 bg-white dark:bg-gray-800 rounded-lg border" />
+const DisplaySettings: FC<{streamTitle: string; runningText: string; onStreamTitleChange: (text: string) => void; onRunningTextChange: (text: string) => void; onUpdate: () => void}> = ({ streamTitle, runningText, onStreamTitleChange, onRunningTextChange, onUpdate }) => {
+    const [localRunningText, setLocalRunningText] = useState(runningText);
+    useEffect(() => {
+        setLocalRunningText(runningText);
+    }, [runningText]);
+    return (
+        <div className="bg-gray-100 dark:bg-gray-700/50 p-4 rounded-lg">
+            <h3 className="font-semibold mb-3">ตั้งค่าการแสดงผล</h3>
+            <div>
+                <label htmlFor="stream-title-input" className="block mb-2 font-semibold">ชื่อเรื่องไลฟ์</label>
+                <input type="text" id="stream-title-input" value={streamTitle} onChange={e => onStreamTitleChange(e.target.value)} placeholder="ใส่ชื่อเรื่องของไลฟ์สตรีม" className="w-full p-3 bg-white dark:bg-gray-800 rounded-lg border" />
+            </div>
+            <div className="mt-4">
+                <label htmlFor="running-text-input" className="block mb-2 font-semibold">ข้อความวิ่ง</label>
+                <textarea id="running-text-input" value={localRunningText} onChange={e => setLocalRunningText(e.target.value)} rows={2} className="w-full p-3 bg-white dark:bg-gray-800 rounded-lg border"></textarea>
+                <button onClick={onUpdate} className="mt-2 w-full p-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">อัปเดตข้อความ</button>
+            </div>
         </div>
-        <div className="mt-4">
-            <label htmlFor="running-text-input" className="block mb-2 font-semibold">ข้อความวิ่ง</label>
-            <textarea id="running-text-input" value={runningText} onChange={e => onRunningTextChange(e.target.value)} rows={2} className="w-full p-3 bg-white dark:bg-gray-800 rounded-lg border"></textarea>
-            <button onClick={onUpdate} className="mt-2 w-full p-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">อัปเดตข้อความ</button>
-        </div>
-    </div>
-);
+    );
+};
 
 // ====================================================================
 // Modal Components
@@ -1459,7 +1482,8 @@ const SettingsModal: FC<{
     isConnected: boolean;
     onClose: () => void;
     onAlert: (props: { message: string, alertType: 'success' | 'error' | 'info' }) => void;
-}> = ({ platform, obs, isConnected, onClose, onAlert }) => {
+    handleConnectRestream: () => void; // ✅ รับ handleConnectRestream
+}> = ({ platform, obs, isConnected, onClose, onAlert, handleConnectRestream }) => { // ✅ รับ handleConnectRestream
     const [url, setUrl] = useState(() => localStorage.getItem(`${platform}-url`) || (platform === 'facebook' ? 'rtmps://live-api-s.facebook.com:443/rtmp/' : ''));
     const [key, setKey] = useState(() => localStorage.getItem(`${platform}-key`) || '');
     // Facebook specific state
@@ -1498,41 +1522,22 @@ const SettingsModal: FC<{
 
             if (platform === 'facebook') {
                 const { outputs } = await obs.call('GetOutputList');
-                const streamOutput = outputs.find((o: any) => o.outputFlags && o.outputFlags.OBS_OUTPUT_VIDEO && o.outputKind === 'rtmp_output'); // ต้องแน่ใจว่าเป็น rtmp_output
+                const streamOutput = outputs.find((o: any) => o.outputFlags && o.outputFlags.OBS_OUTPUT_VIDEO && o.outputKind === 'rtmp_output');
                 if (streamOutput) {
-                    // ดึง encoder settings ปัจจุบันเพื่อ merge
                     const { outputSettings: currentOutputSettings } = await obs.call('GetOutputSettings', { outputName: (streamOutput.outputName as string) });
 
                     const newVideoBitrate = parseInt(videoBitrate);
                     const newAudioBitrate = parseInt(audioBitrate);
 
                     const newSettings = {
-                        ...(currentOutputSettings as object), // ใช้ settings ที่มีอยู่เดิม
-                        // General Encoder Settings
-                        // Bitrate ของวิดีโอ (สำหรับ Encoder Video Bitrate)
-                        // Note: OBS Websocket 5 does not have direct 'video_bitrate' on 'SetOutputSettings'
-                        // Bitrate for the RTMP Output is usually set within encoder settings or as 'videoBitrate' on the stream output
-                        // For simplicity, we'll try to set it, but OBS might ignore if it expects it in encoder_settings
-                        // A safer approach might be GetStreamServiceSettings and inferring.
-                        // For proper control, you might need to adjust OBS's Encoder settings directly.
-                        // Here, we're assuming 'bitrate' might apply if the output kind supports it directly.
-                        // The actual video bitrate is usually set via 'SetVideoSettings' or 'SetStreamOutputSettings'
-                        // 'bitrate' for RTMP output is typically the overall stream bitrate, not just video.
-                        // Let's assume for this example, 'bitrate' parameter affects the video bitrate for simplicity in this context.
-                        // Or, we might need to change encoder settings.
-                        bitrate: newVideoBitrate, // This is a bit ambiguous for OBSWS, often affects overall stream.
-                        audioBitrate: newAudioBitrate, // This is also ambiguous.
-
-                        // Encoder specific settings
-                        // OBS Studio 28+ uses a more structured 'encoderSettings' object
+                        ...(currentOutputSettings as object),
+                        bitrate: newVideoBitrate,
+                        audioBitrate: newAudioBitrate,
                         encoderSettings: {
-                            ...(currentOutputSettings?.encoderSettings as object), // Merge existing encoder settings
-                            // Example for x264/NVENC presets
+                            ...(currentOutputSettings?.encoderSettings as object),
                             preset: preset,
-                            // Add other encoder specific settings here if needed
-                            // 'keyint_min': 2, 'refs': 4, etc.
                         },
-                        encoder: encoder, // Change encoder
+                        encoder: encoder,
                     };
 
                     console.log('Attempting to set output settings with:', newSettings);
@@ -1550,7 +1555,7 @@ const SettingsModal: FC<{
             }
 
             onAlert({ message: `ตั้งค่าปลายทางเป็น ${config.name} สำเร็จ!`, alertType: 'success' });
-            onClose(); // ปิด modal หลังจากบันทึกสำเร็จ
+            onClose();
 
         } catch (error: any) {
             console.error("Save Settings Error:", error);
@@ -1565,7 +1570,8 @@ const SettingsModal: FC<{
         tiktok: { name: 'TikTok Live', icon: <FaTiktok className="text-black dark:text-white" /> },
         instagram: { name: 'Instagram Live', icon: <FaInstagram className="text-pink-500" /> },
         shopee: { name: 'Shopee Live', icon: <FaShopware className="text-orange-500" /> },
-        custom: { name: 'Custom RTMP', icon: <FaSatelliteDish className="text-teal-400" /> }
+        custom: { name: 'Custom RTMP', icon: <FaSatelliteDish className="text-teal-400" /> },
+        restream: { name: 'Restream.io', icon: <FaGlobe className="text-purple-500" /> } // ✅ เพิ่ม restream
     };
     const config = platformConfigs[platform as keyof typeof platformConfigs];
 
@@ -1577,57 +1583,79 @@ const SettingsModal: FC<{
                     <button onClick={onClose} className="text-gray-400 text-2xl">&times;</button>
                 </div>
                 <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
-                    <div>
-                        <label className="block mb-1 font-semibold text-sm">Server URL</label>
-                        <input type="text" value={url} onChange={e => setUrl(e.target.value)} disabled={platform === 'facebook'} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600 disabled:cursor-not-allowed" />
-                    </div>
-                    <div>
-                        <label className="block mb-1 font-semibold text-sm">คีย์สตรีม (Stream Key)</label>
-                        <div className="relative">
-                            <input type={showKey ? 'text' : 'password'} value={key} onChange={e => setKey(e.target.value)} className="w-full p-2 pr-10 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600" />
-                            <button onClick={() => setShowKey(!showKey)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400">{showKey ? <FaEyeSlash /> : <FaEye />}</button>
+                    {/* ส่วนสำหรับ Restream Integration */}
+                    {platform === 'restream' ? (
+                        <div>
+                            <h3 className="font-semibold mb-3">เชื่อมต่อ Restream.io</h3>
+                            <p className="text-gray-600 dark:text-gray-300 mb-4">
+                                คลิกปุ่มด้านล่างเพื่อเชื่อมต่อบัญชี Restream ของคุณ
+                                จะพาไปยังหน้า Login ของ Restream เพื่อให้คุณอนุมัติการเข้าถึง
+                            </p>
+                            <button
+                                onClick={handleConnectRestream} // ✅ เรียก handleConnectRestream
+                                className="w-full py-2 px-4 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg"
+                            >
+                                เชื่อมต่อกับ Restream
+                            </button>
                         </div>
-                        {platform === 'facebook' && <a href="https://www.facebook.com/live/producer?ref=OBS" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-sm text-blue-600 hover:underline"><FaKey className="mr-1 inline"/> ขอคีย์สตรีม</a>}
-                    </div>
-                    {platform === 'facebook' && (
+                    ) : (
+                        // ส่วนเดิมสำหรับ Platform อื่นๆ (Facebook, YouTube, etc.)
                         <>
-                            <hr className="dark:border-gray-600 my-4" />
-                            <h4 className="font-semibold">การตั้งค่า Output (ไม่บังคับ)</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block mb-1 font-semibold text-sm">Video Bitrate (Kbps)</label>
-                                    <input type="number" value={videoBitrate} onChange={e => setVideoBitrate(e.target.value)} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600" />
-                                </div>
-                                <div>
-                                    <label className="block mb-1 font-semibold text-sm">Audio Bitrate (Kbps)</label>
-                                    <input type="number" value={audioBitrate} onChange={e => setAudioBitrate(e.target.value)} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600" />
-                                </div>
+                            <div>
+                                <label className="block mb-1 font-semibold text-sm">Server URL</label>
+                                <input type="text" value={url} onChange={e => setUrl(e.target.value)} disabled={platform === 'facebook'} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600 disabled:cursor-not-allowed" />
                             </div>
                             <div>
-                                <label className="block mb-1 font-semibold text-sm">Encoder</label>
-                                <select value={encoder} onChange={e => setEncoder(e.target.value)} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
-                                    <option value="obs_x264">Software (x264)</option>
-                                    <option value="nvenc_h264">Hardware (NVENC, H.264)</option>
-                                    <option value="amd_amf_h264">Hardware (AMD, H.264)</option>
-                                    <option value="qsv_h264">Hardware (Intel QSV, H.264)</option> {/* เพิ่ม QSV */}
-                                </select>
+                                <label className="block mb-1 font-semibold text-sm">คีย์สตรีม (Stream Key)</label>
+                                <div className="relative">
+                                    <input type={showKey ? 'text' : 'password'} value={key} onChange={e => setKey(e.target.value)} className="w-full p-2 pr-10 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600" />
+                                    <button onClick={() => setShowKey(!showKey)} className="absolute inset-y-0 right-0 top-0 pr-3 flex items-center text-gray-400">{showKey ? <FaEyeSlash /> : <FaEye />}</button>
+                                </div>
+                                {platform === 'facebook' && <a href="https://www.facebook.com/live/producer?ref=OBS" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-sm text-blue-600 hover:underline"><FaKey className="mr-1 inline"/> ขอคีย์สตรีม</a>}
                             </div>
-                             <div>
-                                <label className="block mb-1 font-semibold text-sm">Encoder Preset</label>
-                                <select value={preset} onChange={e => setPreset(e.target.value)} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
-                                    <option value="quality">เน้นคุณภาพ (Quality)</option>
-                                    <option value="balanced">สมดุล (Balanced)</option>
-                                    <option value="speed">เน้นความเร็ว (Speed)</option>
-                                    <option value="veryfast">Very Fast (x264)</option> {/* เพิ่มสำหรับ x264 */}
-                                    <option value="faster">Faster (x264)</option>
-                                </select>
-                            </div>
+                            {platform === 'facebook' && (
+                                <>
+                                    <hr className="dark:border-gray-600 my-4" />
+                                    <h4 className="font-semibold">การตั้งค่า Output (ไม่บังคับ)</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block mb-1 font-semibold text-sm">Video Bitrate (Kbps)</label>
+                                            <input type="number" value={videoBitrate} onChange={e => setVideoBitrate(e.target.value)} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600" />
+                                        </div>
+                                        <div>
+                                            <label className="block mb-1 font-semibold text-sm">Audio Bitrate (Kbps)</label>
+                                            <input type="number" value={audioBitrate} onChange={e => setAudioBitrate(e.target.value)} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block mb-1 font-semibold text-sm">Encoder</label>
+                                        <select value={encoder} onChange={e => setEncoder(e.target.value)} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
+                                            <option value="obs_x264">Software (x264)</option>
+                                            <option value="nvenc_h264">Hardware (NVENC, H.264)</option>
+                                            <option value="amd_amf_h264">Hardware (AMD, H.264)</option>
+                                            <option value="qsv_h264">Hardware (Intel QSV, H.264)</option>
+                                        </select>
+                                    </div>
+                                     <div>
+                                        <label className="block mb-1 font-semibold text-sm">Encoder Preset</label>
+                                        <select value={preset} onChange={e => setPreset(e.target.value)} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
+                                            <option value="quality">เน้นคุณภาพ (Quality)</option>
+                                            <option value="balanced">สมดุล (Balanced)</option>
+                                            <option value="speed">เน้นความเร็ว (Speed)</option>
+                                            <option value="veryfast">Very Fast (x264)</option>
+                                            <option value="faster">Faster (x264)</option>
+                                        </select>
+                                    </div>
+                                </>
+                            )}
                         </>
                     )}
                 </div>
                 <div className="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-b-2xl flex justify-end gap-3">
                     <button onClick={onClose} className="py-2 px-4 rounded-lg bg-gray-500 hover:bg-gray-600 text-white font-semibold">ยกเลิก</button>
-                    <button onClick={handleSave} className="py-2 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold">ตั้งค่าเป็นปลายทาง</button>
+                    {platform !== 'restream' && (
+                        <button onClick={handleSave} className="py-2 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold">ตั้งค่าเป็นปลายทาง</button>
+                    )}
                 </div>
             </div>
         </div>
