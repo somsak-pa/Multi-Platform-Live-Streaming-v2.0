@@ -166,7 +166,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
         const data = await response.json(); // ✅ data ตอนนี้คือ { webChatUrl: "..." }
 
         // console.log("Backend Response for chat-token:", data); // ✅ ล็อกนี้ดีแล้ว
-
+        console.log('111.222 : ' + data.webChatUrl)
         // ✅ แก้ไขตรงนี้: รับค่าจาก data.webChatUrl และนำไป setChatToken
         //    เพราะ Backend ส่ง key เป็น webChatUrl ไม่ใช่ chatToken
         if (data.webchatUrl) {
@@ -1155,7 +1155,7 @@ const CommentsTab: FC<{ comments: Comment[]; onSendComment: (text: string) => vo
     //const embedUrl = chatToken ? `${RESTREAM_API_BASE_URL}/embed?token=${chatToken}` : ''; // ✅ สร้าง URL จาก chatToken
 
 
-    console.log("CommentsTab received chatToken:", chatToken); // ✅ เพิ่ม log นี้
+    console.log("CommentsTab received chatToken:", webchatUrl); // ✅ เพิ่ม log นี้
     //const embedUrl = chatToken ? `https://chat.restream.io/embed?token=${chatToken}` : '';
     const embedUrl = chatToken; 
     console.log("CommentsTab embedUrl:", embedUrl); // ✅ เพิ่ม log นี้
