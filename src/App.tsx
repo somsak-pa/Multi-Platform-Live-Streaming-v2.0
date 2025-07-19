@@ -6,7 +6,7 @@ import {
     FaPlay, FaStop, FaCheckDouble, FaComments, FaGear, FaPaperPlane, FaPencil,
     FaTrash, FaSun, FaMoon, FaChevronDown, FaKey, FaSatelliteDish, FaCircleCheck, FaCircleXmark,
     FaCircleInfo, FaCircleQuestion, FaEyeSlash, FaMicrophone, FaShopware,
-    FaGlobe // ✅ เพิ่ม FaGlobe สำหรับ ChannelsTab
+    FaGlobe,FaUsers // ✅ เพิ่ม FaGlobe สำหรับ ChannelsTab
 } from 'react-icons/fa6';
 import OBSWebSocket from 'obs-websocket-js';
 
@@ -1194,37 +1194,106 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
     useEffect(() => {
         onFetchRestreamChannels(); // ดึง channels เมื่อ component mount
     }, [onFetchRestreamChannels]);
-
+    // Helper function เพื่อคืนค่า Icon ของ Platform (สามารถขยายได้)
+    const getPlatformIcon = (platformName: string) => {
+        switch (platformName) {
+            case 'Facebook': return <FaFacebookF className="text-blue-600" />;
+            case 'YouTube': return <FaYoutube className="text-red-600" />;
+            case 'Twitch': return <FaTiktok className="text-purple-600" />; // ใช้ TikTok icon ชั่วคราว ถ้าไม่มี Twitch icon
+            case 'X (Twitter)': return <FaTiktok className="text-gray-800 dark:text-white" />; // ใช้ TikTok icon ชั่วคราว
+            case 'TikTok': return <FaTiktok className="text-black dark:text-white" />; // เพิ่ม TikTok
+            // เพิ่ม case อื่นๆ
+            default: return <FaGlobe className="text-gray-500" />;
+        }
+    };
     return (
         <div className="space-y-4">
-            <h3 className="font-bold text-lg mb-2">ช่องสตรีมของคุณ</h3>
+            {/* Header: Your Channels, Paired Channels */}
+            <div className="flex justify-between items-center pb-2 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100">Your Channels</h3>
+                <button className="text-blue-500 hover:text-blue-400 font-semibold text-sm flex items-center">
+                    Paired Channels <FaChevronDown className="ml-1 text-xs" /> {/* ใช้ FaChevronDown ที่ import มา */}
+                </button>
+            </div>
+
+            {/* Top Buttons: Add Channel, Update Titles */}
+            <div className="flex gap-2 mb-4">
+                <button className="flex-1 py-2 px-4 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 font-semibold flex items-center justify-center text-sm">
+                    <FaPlus className="mr-2" /> Add Channel
+                </button>
+                <button className="flex-1 py-2 px-4 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 font-semibold flex items-center justify-center text-sm">
+                    <FaPencil className="mr-2" /> Update Titles
+                </button>
+            </div>
+
+            {/* Toggle All (Optional) */}
+            <div className="flex justify-end items-center text-sm text-gray-500 dark:text-gray-400">
+                <span>Toggle all</span>
+                <button className="ml-2 px-2 py-1 rounded-full bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-white text-xs font-semibold">OFF</button>
+                <button className="ml-1 px-2 py-1 rounded-full bg-blue-500 text-white text-xs font-semibold">ON</button>
+            </div>
+
+            {/* Channel List */}
             {restreamChannels.length === 0 ? (
-                <p className="text-gray-500 dark:text-gray-400">
+                <p className="text-gray-500 dark:text-gray-400 text-center py-10">
                     ยังไม่มีช่องสตรีม Restream หรือยังไม่ได้เชื่อมต่อ.
-                    ไปที่ <span className="font-semibold text-blue-500 cursor-pointer" onClick={() => {/* logic to switch to settings tab */}}>ตั้งค่า</span> เพื่อเชื่อมต่อ.
+                    <br />ไปที่ <span className="font-semibold text-blue-500 cursor-pointer" onClick={() => {/* logic to switch to settings tab */}}>ตั้งค่า</span> เพื่อเชื่อมต่อ.
                 </p>
             ) : (
                 <div className="grid grid-cols-1 gap-3">
                     {restreamChannels.map(channel => (
-                        <div key={channel.id} className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className={`w-3 h-3 rounded-full ${channel.enabled ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                <span className="font-semibold">{channel.name}</span>
-                                <span className="text-sm text-gray-500 dark:text-gray-400">({channel.platform})</span>
+                        <div key={channel.id} className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg flex items-center justify-between shadow-sm">
+                            <div className="flex items-center gap-3">
+                                {/* Profile Picture/Icon */}
+                                <div className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-xl overflow-hidden">
+                                    {/* ถ้ามี URL รูปโปรไฟล์ ให้ใช้ img, ถ้าไม่มีใช้ icon ของ platform */}
+                                    {channel.platform === 'YouTube' ? getPlatformIcon(channel.platform) : // ตัวอย่าง: ถ้า YouTube ให้ใช้ Icon
+                                     channel.platform === 'Facebook' ? getPlatformIcon(channel.platform) :
+                                     <FaUsers className="text-gray-500 dark:text-gray-300" />} {/* Icon Default เช่น FaUsers */}
+                                </div>
+                                
+                                <div>
+                                    <div className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                        <span>{channel.name}</span>
+                                        {channel.status === 'online' ? (
+                                            <span className="text-green-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-800">Live</span>
+                                        ) : (
+                                            <span className="text-gray-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-600">Offline</span>
+                                        )}
+                                        {/* Public tag จาก Restream ถ้ามี */}
+                                        {channel.privacy === 'public' && <span className="text-blue-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-800">Public</span>}
+                                    </div>
+                                    <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1">
+                                        {getPlatformIcon(channel.platform)}
+                                        <span>Stream via RTMP (OBS, Vmix, Zoom) with Restr...</span> {/* ข้อความจาก Restream.io */}
+                                    </div>
+                                </div>
                             </div>
-                            <button
-                                onClick={() => onToggleChannelEnabled(channel.id, channel.enabled)}
-                                className={`px-3 py-1 rounded-full text-white text-xs font-semibold
-                                    ${channel.enabled ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
-                            >
-                                {channel.enabled ? 'ปิด' : 'เปิด'}
-                            </button>
+                            
+                            {/* Toggle Switch */}
+                            <label htmlFor={`toggle-${channel.id}`} className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    id={`toggle-${channel.id}`}
+                                    className="sr-only peer"
+                                    checked={channel.enabled}
+                                    onChange={() => onToggleChannelEnabled(channel.id, channel.enabled)}
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                            </label>
                         </div>
                     ))}
                 </div>
             )}
+
+            {/* Optional: Live streaming disabled message */}
+            {/* คุณสามารถเพิ่มเงื่อนไขเพื่อแสดงข้อความนี้ได้ เช่น ถ้าบางช่องถูก disable หรือมีปัญหา API */}
+            {/* <div className="mt-4 p-3 rounded-lg bg-red-100 dark:bg-red-900 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 flex items-center text-sm">
+                <FaCircleExmark className="mr-2 text-xl" /> Live streaming disabled. <a href="#" className="underline ml-1">Learn more</a>
+            </div> */}
         </div>
     );
+
 };
 
 

@@ -87,4 +87,5 @@ export type RestreamChannel = {
     identifier?: string;
     embedUrl?: string;
     displayName?: string; // ถ้ายังต้องการเก็บ raw displayName
+     privacy?: 'public' | 'private' | string;
 };
