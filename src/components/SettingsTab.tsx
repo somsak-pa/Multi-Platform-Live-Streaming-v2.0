@@ -3,8 +3,7 @@ import React, { useState, FC } from 'react';
 import { FaChevronDown, FaEye, FaEyeSlash,} from 'react-icons/fa6';
 import { AppState } from '../types'; // นำเข้า AppState
 import { FaFacebookF, FaYoutube, FaTiktok, FaInstagram, FaShopware, FaSatelliteDish } from 'react-icons/fa6';
-// UI Components (ย้ายมาจาก App.tsx)
-// เพื่อให้ SettingsTab ไม่ต้องใหญ่เกินไป เราอาจแยกเป็น Sub-components ภายในนี้อีกที
+const BACKEND_API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL;
 const OBSSettings: FC<{
     status: AppState['obsStatus'];
     onConnect: (ip: string, port: string, pass:string, save: boolean) => void;
@@ -137,9 +136,15 @@ const SettingsTab: FC<SettingsTabProps> = (props) => {
     // --- ฟังก์ชันสำหรับเชื่อมต่อ Restream (อยู่ใน App.tsx) ---
     const handleConnectRestream = async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/auth/restream');
+            //    ไปใช้ BACKEND_API_BASE_URL แทน
+            const response = await fetch(`${BACKEND_API_BASE_URL}/api/auth/restream`);
+
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                // หาก Backend ส่งสถานะ Error (เช่น 4xx, 5xx)
+                // ลองอ่านข้อความ Error จาก Backend ถ้ามี เพื่อการ Debug ที่ดีขึ้น
+                const errorText = await response.text(); // อ่าน Response body เป็น text
+                console.error('Backend Error Response:', errorText);
+                throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
             }
             const data = await response.json();
             if (data.authUrl) {
@@ -147,9 +152,22 @@ const SettingsTab: FC<SettingsTabProps> = (props) => {
             } else {
                 onSetModal({ type: 'alert', props: { message: 'ไม่สามารถสร้าง URL สำหรับเชื่อมต่อ Restream ได้', alertType: 'error' } });
             }
-        } catch (error) {
+        } catch (error) { // ✅ error: unknown
             console.error('Error initiating Restream OAuth:', error);
-            onSetModal({ type: 'alert', props: { message: 'เกิดข้อผิดพลาดในการเริ่มต้นเชื่อมต่อ Restream', alertType: 'error' } });
+
+            let errorMessage = 'ไม่ทราบข้อผิดพลาด'; // ข้อความเริ่มต้น
+
+            // ✅ ตรวจสอบประเภทของ error ก่อนเข้าถึง properties
+            if (error instanceof Error) {
+                errorMessage = error.message; // ถ้าเป็น Error object, ใช้ message
+            } else if (typeof error === 'string') {
+                errorMessage = error; // ถ้าเป็น string, ใช้ string นั้นเลย
+            } else {
+                // กรณีอื่นๆ เช่น เป็น object ทั่วไป
+                errorMessage = String(error); // แปลงเป็น string
+            }
+
+            onSetModal({ type: 'alert', props: { message: `เกิดข้อผิดพลาดในการเริ่มต้นเชื่อมต่อ Restream: ${errorMessage}`, alertType: 'error' } });
         }
     };
     // ------------------------------------------

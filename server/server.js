@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 5000; // ใช้ port 5000 หรือตา
 // Middleware สำหรับอนุญาต Cross-Origin Requests (CORS)
 // สำคัญ: ใน Production ควรระบุ origin ที่แน่นอนของ Front-End ของคุณ
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:1420'], // URL ของ React App ของคุณ
+    origin: ['http://localhost:3000', 'http://localhost:1420','https://prismatic-sorbet-b852f8.netlify.app'], // URL ของ React App ของคุณ
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
     optionsSuccessStatus: 204

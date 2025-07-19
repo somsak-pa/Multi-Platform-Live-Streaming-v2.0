@@ -17,6 +17,7 @@ import {
     Product, Comment, OBSScene, OBSSource, OBSAudioInput, AppState, Action, RestreamChannel
 } from './types'; // ✅ นำเข้าจากไฟล์ types.ts
 import ChannelsTab from './components/ChannelsTab';
+const BACKEND_API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL;
 //import { dataDir } from '@tauri-apps/api/path';
 // ====================================================================
 // State Management with useReducer
@@ -448,7 +449,7 @@ const fetchRestreamChannels = useCallback(async () => {
         }
 
             console.log('Fetching Restream channels with token. Length:', currentAccessToken.length);
-            const response = await fetch('http://localhost:5000/api/restream-channels', {
+            const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels`, {
                 headers: {
                     'Authorization': `Bearer ${currentAccessToken}`
                 }
@@ -704,7 +705,8 @@ useEffect(() => {
                 const newEnabledState = Boolean(!currentEnabledState); // ยืนยันว่าเป็น boolean
 
             try {
-                const response = await fetch(`http://localhost:5000/api/restream-channels/${channelId}`, {
+                const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels/${channelId}`, {
+
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1183,20 +1185,6 @@ const CommentsTab: FC<{ onSendComment: (text: string) => void }> = ({ onSendComm
     );
 };
 
-// AnalyticsTab ถูกลบออกไปจาก RightPanel เพราะเรามี ChannelsTab แทนที่แล้ว
-// const AnalyticsTab: FC<{analytics: AppState['analytics']}> = ({analytics}) => (
-//     <div className="h-full overflow-y-auto pr-2 space-y-4 custom-scrollbar">
-//         <div className="p-4 rounded-lg text-white text-center bg-gradient-to-br from-blue-500 to-indigo-600">
-//             <div>ผู้ชมรวม</div><div className="text-3xl font-bold">{analytics.totalViewers}</div>
-//         </div>
-//         <div className="p-4 rounded-lg text-white text-center bg-gradient-to-br from-green-500 to-teal-600">
-//             <div>ผู้ชมสูงสุด</div><div className="text-3xl font-bold">{analytics.peakViewers}</div>
-//         </div>
-//         <div className="p-4 rounded-lg text-white text-center bg-gradient-to-br from-purple-500 to-pink-600">
-//             <div>คอมเมนต์ทั้งหมด</div><div className="text-3xl font-bold">{analytics.totalComments}</div>
-//         </div>
-//     </div>
-// );
 
 const SettingsTab: FC<Omit<Parameters<typeof RightPanel>[0], 'comments' | 'analytics' | 'activeTab' | 'setActiveTab' | 'onSendComment' | 'restreamChannels' | 'onFetchRestreamChannels' | 'onToggleRestreamChannel'>> = (props) => {
     const { obsStatus, runningText, streamTitle, onConnectOBS, onDisconnectOBS, onUpdateRunningText, onUpdateStreamTitle, onOpenPlatformSettings, onSetModal } = props;
@@ -1205,9 +1193,15 @@ const SettingsTab: FC<Omit<Parameters<typeof RightPanel>[0], 'comments' | 'analy
         // --- เพิ่มฟังก์ชันสำหรับเชื่อมต่อ Restream ---
         const handleConnectRestream = async () => {
             try {
-                const response = await fetch('http://localhost:5000/api/auth/restream');
+
+                const response = await fetch(`${BACKEND_API_BASE_URL}/api/auth/restream`);
+
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    // หาก Backend ส่งสถานะ Error (เช่น 4xx, 5xx)
+                    // ลองอ่านข้อความ Error จาก Backend ถ้ามี
+                    const errorText = await response.text(); // อ่านเป็น text ก่อน
+                    console.error('Backend Error Response:', errorText);
+                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
                 }
                 const data = await response.json();
                 if (data.authUrl) {
@@ -1215,9 +1209,22 @@ const SettingsTab: FC<Omit<Parameters<typeof RightPanel>[0], 'comments' | 'analy
                 } else {
                     onSetModal({ type: 'alert', props: { message: 'ไม่สามารถสร้าง URL สำหรับเชื่อมต่อ Restream ได้', alertType: 'error' } });
                 }
-            } catch (error) {
+            } catch (error) { // ✅ error: unknown
                 console.error('Error initiating Restream OAuth:', error);
-                onSetModal({ type: 'alert', props: { message: 'เกิดข้อผิดพลาดในการเริ่มต้นเชื่อมต่อ Restream', alertType: 'error' } });
+
+                let errorMessage = 'ไม่ทราบข้อผิดพลาด'; // ข้อความเริ่มต้น
+
+                // ✅ ตรวจสอบประเภทของ error ก่อนเข้าถึง properties
+                if (error instanceof Error) {
+                    errorMessage = error.message; // ถ้าเป็น Error object, ใช้ message
+                } else if (typeof error === 'string') {
+                    errorMessage = error; // ถ้าเป็น string, ใช้ string นั้นเลย
+                } else {
+                    // กรณีอื่นๆ เช่น เป็น object ทั่วไป
+                    errorMessage = String(error); // แปลงเป็น string
+                }
+
+                onSetModal({ type: 'alert', props: { message: `เกิดข้อผิดพลาดในการเริ่มต้นเชื่อมต่อ Restream: ${errorMessage}`, alertType: 'error' } });
             }
         };
         // ------------------------------------------
