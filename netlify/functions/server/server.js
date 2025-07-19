@@ -194,7 +194,7 @@ const handler = async (event, context) => {
                         'Content-Type': 'application/json'
                     }
                 });
-console.log('111.111 : ' + response)
+
                 if (!response.ok) {
                     console.log('222')
                     const errorText = await response.text();
@@ -216,8 +216,8 @@ console.log('111.111 : ' + response)
                 }
                 console.log('444')
                 const data = await response.json(); // Response จาก Restream API: { "webChatUrl": "https://chat.restream.io/embed?token=xxx" }
-                const webChatUrl = data.webChatUrl; // ✅ นี่คือ URL เต็มที่ได้จาก Restream API
-
+                const webChatUrl = data.webchatUrl; // ✅ นี่คือ URL เต็มที่ได้จาก Restream API
+                console.log('111.111 : ' + webChatUrl)
                 let chatToken = null;
                if (!webChatUrl) { // ตรวจสอบว่า webChatUrl มีค่าหรือไม่
                     console.error("webChatUrl property is missing or null in Restream API response:", data);
