@@ -1141,7 +1141,14 @@ const CommentsTab: FC<{ comments: Comment[]; onSendComment: (text: string) => vo
     const [commentInput, setCommentInput] = useState('');
     const listRef = useRef<HTMLDivElement>(null);
 
-    const embedUrl = chatToken ? `${RESTREAM_API_BASE_URL}/embed?token=${chatToken}` : ''; // ✅ สร้าง URL จาก chatToken
+    //const embedUrl = chatToken ? `${RESTREAM_API_BASE_URL}/embed?token=${chatToken}` : ''; // ✅ สร้าง URL จาก chatToken
+
+
+    console.log("CommentsTab received chatToken:", chatToken); // ✅ เพิ่ม log นี้
+    const embedUrl = chatToken ? `https://chat.restream.io/embed?token=${chatToken}` : '';
+    console.log("CommentsTab embedUrl:", embedUrl); // ✅ เพิ่ม log นี้
+
+
 
     useEffect(() => {
         listRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
