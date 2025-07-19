@@ -21,7 +21,8 @@ const { default: fetch } = require('node-fetch'); // สำหรับ Node.js 
 // app.use(express.json());
 // app.use(express.urlencoded({ extended: true }));
 
-
+// ใน netlify/functions/server/index.js (หรือ server.js)
+// Endpoint: /api/auth/restream
 // ==========================================================
 // ✅ 5. ดึง Environment Variables จาก Netlify Dashboard
 //    ค่าเหล่านี้จะถูกตั้งค่าใน Environment Variables ของ Netlify
@@ -86,7 +87,7 @@ const handler = async (event, context) => {
                     body: JSON.stringify({ error: 'Restream OAuth configuration is missing (CLIENT_ID or REDIRECT_URI).' }),
                 };
             }
-            const scopes = 'channels.read channels.write live.read';
+            const scopes = 'channels.read channels.write live.read chat.read';
             const authUrl = `${RESTREAM_OAUTH_AUTH_URL}?response_type=code&client_id=${RESTREAM_CLIENT_ID}&redirect_uri=${encodeURIComponent(RESTREAM_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}`;
             
             return {
