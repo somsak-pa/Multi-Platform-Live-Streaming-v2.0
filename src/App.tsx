@@ -154,6 +154,197 @@ const App: FC = () => {
     }, [dispatch]);
     // ✅ ฟังก์ชันใหม่สำหรับดึง Chat Token จาก Backend
 
+    const refreshAccessToken = useCallback(async (currentRefreshToken: string) => {
+    try {
+        const response = await fetch(`${BACKEND_API_BASE_URL}/api/auth/restream/refresh-token`, { // ✅ Endpoint ใหม่
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: currentRefreshToken }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Error refreshing token:', response.status, errorData);
+            // ถ้า refresh token หมดอายุหรือใช้ไม่ได้ ให้แจ้งเตือนและลบ token ออกทั้งหมด
+            if (response.status === 400 || response.status === 401) {
+                setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
+                localStorage.removeItem('restream-access-token');
+                localStorage.removeItem('restream-refresh-token');
+                setRestreamAccessToken(null);
+                setRestreamRefreshToken(null);
+            }
+            throw new Error(`Failed to refresh token: ${errorData.message || response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('Successfully refreshed tokens:', data);
+        // บันทึก access_token และ refresh_token ใหม่
+        localStorage.setItem('restream-access-token', data.access_token);
+        if (data.refresh_token) { // Restream อาจจะคืน refresh_token ใหม่หรือไม่ก็ได้
+            localStorage.setItem('restream-refresh-token', data.refresh_token);
+            setRestreamRefreshToken(data.refresh_token);
+        }
+        setRestreamAccessToken(data.access_token);
+        return data.access_token; // คืน access_token ใหม่
+    } catch (error) {
+        console.error('Failed to refresh access token:', error);
+        setModal({ type: 'alert', props: { message: 'ไม่สามารถ Refresh Token ได้ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
+        localStorage.removeItem('restream-access-token');
+        localStorage.removeItem('restream-refresh-token');
+        setRestreamAccessToken(null);
+        setRestreamRefreshToken(null);
+        return null;
+    }
+}, [BACKEND_API_BASE_URL, setRestreamAccessToken, setRestreamRefreshToken, setModal]);
+
+const fetchRestreamChannels = useCallback(async (accessToken?: string | null) => {
+    const tokenToUse = accessToken || restreamAccessToken;
+
+    if (!tokenToUse) {
+        console.log('No Restream Access Token available. Clearing channels and skipping fetch/interval.');
+        dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: [] });
+        return;
+    }
+
+    console.log('Fetching Restream channels with token. Length:', tokenToUse.length);
+    try {
+        const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels`, {
+            headers: {
+                'Authorization': `Bearer ${tokenToUse}`
+            }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error("Back-End API response not OK:", response.status, errorData);
+            
+            // จัดการ Refresh Token เมื่อเจอ 401 หรือ 403
+            if (response.status === 401 || response.status === 403) {
+                const currentRefreshToken = localStorage.getItem('restream-refresh-token');
+                if (currentRefreshToken) {
+                    console.log("Access token expired, attempting to refresh token...");
+                    const newAccessToken = await refreshAccessToken(currentRefreshToken);
+                    if (newAccessToken) {
+                        console.log("Retrying fetchRestreamChannels with new token.");
+                        return await fetchRestreamChannels(newAccessToken); // เรียกตัวเองซ้ำด้วย token ใหม่
+                    }
+                }
+                // ถ้าไม่มี refresh token หรือ refresh ล้มเหลว
+                setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
+                localStorage.removeItem('restream-access-token');
+                localStorage.removeItem('restream-refresh-token');
+                setRestreamAccessToken(null);
+                setRestreamRefreshToken(null);
+            }
+            throw new Error(`HTTP error! status: ${response.status} - ${JSON.stringify(errorData)}`);
+        }
+
+        const data = await response.json();
+        console.log('--- Data from Back-End (in App.tsx) ---', data);
+
+        if (Array.isArray(data)) {
+            dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: data });
+        } else if (data && Array.isArray(data.channels)) {
+            console.warn("Restream API data is an object with 'channels' key. Using data.channels.");
+            dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: data.channels });
+        } else {
+            console.error("Unexpected data format from Back-End:", data);
+            dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: [] });
+        }
+
+    } catch (error) {
+        console.error("Failed to fetch Restream channels:", error);
+        let errorMessage = 'ไม่ทราบข้อผิดพลาด';
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        } else if (typeof error === 'string') {
+            errorMessage = error;
+        } else {
+            errorMessage = String(error);
+        }
+        if (error instanceof Error && error.message.includes('401')) {
+        } else {
+            setModal({ type: 'alert', props: { message: `ไม่สามารถดึงข้อมูลช่อง Restream ได้: ${errorMessage}`, alertType: 'error' } });
+        }
+    }
+}, [dispatch, setRestreamAccessToken, setRestreamRefreshToken, setModal, restreamAccessToken, BACKEND_API_BASE_URL, refreshAccessToken]); // ✅ Dependency array
+
+
+const handleToggleRestreamChannel = useCallback(async (channelId: number, currentEnabledState: boolean) => {
+    const tokenToUse = restreamAccessToken || localStorage.getItem('restream-access-token');
+    if (!tokenToUse) {
+        setModal({ type: 'alert', props: { message: 'ไม่มี Token สำหรับ Restream.io กรุณาเชื่อมต่อบัญชีใหม่', alertType: 'info' } });
+        return;
+    }
+
+    const newEnabledState = !currentEnabledState;
+
+    try {
+        const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels/${channelId}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${tokenToUse}`
+            },
+            body: JSON.stringify({ enabled: newEnabledState })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json(); // ประกาศ errorData ใน scope นี้
+
+            // ✅ จัดการ Refresh Token เมื่อเจอ 401 หรือ 403
+            if (response.status === 401 || response.status === 403) {
+                const currentRefreshToken = localStorage.getItem('restream-refresh-token');
+                if (currentRefreshToken) {
+                    console.log("Access token expired for toggle, attempting to refresh token...");
+                    const newAccessToken = await refreshAccessToken(currentRefreshToken);
+                    if (newAccessToken) {
+                        console.log("Retrying handleToggleRestreamChannel with new token.");
+                        // เรียกตัวเองซ้ำด้วย token ใหม่
+                        return await handleToggleRestreamChannel(channelId, currentEnabledState);
+                    }
+                }
+                // ถ้าไม่มี refresh token หรือ refresh ล้มเหลว
+                setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
+                localStorage.removeItem('restream-access-token');
+                localStorage.removeItem('restream-refresh-token');
+                setRestreamAccessToken(null);
+                setRestreamRefreshToken(null);
+            }
+            // ✅ Throw Error (ใช้ errorData.message ที่นี่ได้)
+            throw new Error(`Failed to update channel status: ${errorData.message || response.statusText}`);
+        }
+
+        const updatedChannelData = await response.json();
+        dispatch({
+            type: 'UPDATE_RESTREAM_CHANNEL_STATUS',
+            payload: { channelId: channelId, enabled: updatedChannelData.active }
+        });
+
+        // ✅ ดึงชื่อช่องจาก appState.restreamChannels เพื่อแสดงใน Modal
+        const nameToDisplay = appState.restreamChannels.find(c => c.id === channelId)?.name || 'ช่อง';
+
+        setModal({ type: 'alert', props: { message: `อัปเดตสถานะช่อง ${nameToDisplay} เป็น ${newEnabledState ? 'เปิด' : 'ปิด'} สำเร็จ!`, alertType: 'success' } });
+
+        // ✅ เรียก fetchRestreamChannels() เพื่ออัปเดตรายการช่องทั้งหมดหลังจากแก้ไขสถานะ
+        fetchRestreamChannels();
+
+    } catch (error) { // ✅ error: unknown
+        console.error('Error toggling Restream channel status:', error);
+        // ✅ ตรวจสอบประเภทของ error ก่อนเข้าถึง properties
+        let errorMessage = 'ไม่ทราบข้อผิดพลาด';
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        } else if (typeof error === 'string') {
+            errorMessage = error;
+        } else {
+            errorMessage = String(error);
+        }
+        setModal({ type: 'alert', props: { message: `ไม่สามารถอัปเดตสถานะช่องได้: ${errorMessage}`, alertType: 'error' } });
+    }
+}, [restreamAccessToken, fetchRestreamChannels, setModal, setRestreamAccessToken, setRestreamRefreshToken, dispatch, BACKEND_API_BASE_URL, refreshAccessToken, appState.restreamChannels]); // ✅ Dependencies ทั้งหมด
+
+
 const fetchChatToken = useCallback(async (accessToken: string) => {
     try {
         const response = await fetch(`${BACKEND_API_BASE_URL}/api/chat-token`, {
@@ -166,12 +357,12 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
         const data = await response.json(); // ✅ data ตอนนี้คือ { webChatUrl: "..." }
 
         // console.log("Backend Response for chat-token:", data); // ✅ ล็อกนี้ดีแล้ว
-        console.log('111.222 : ' + data.webChatUrl)
+        //console.log('111.222 : ' + data.webChatUrl)
         // ✅ แก้ไขตรงนี้: รับค่าจาก data.webChatUrl และนำไป setChatToken
         //    เพราะ Backend ส่ง key เป็น webChatUrl ไม่ใช่ chatToken
         if (data.webchatUrl) {
             setChatToken(data.webchatUrl); // ✅ บันทึก webChatUrl ลงใน State chatToken
-            console.log("Set chatToken (now webChatUrl) to:", data.webchatUrl);
+            //console.log("Set chatToken (now webChatUrl) to:", data.webchatUrl);
         } else {
             console.error("webChatUrl not found in backend response for chat-token:", data);
             setChatToken(null);
@@ -183,72 +374,6 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
     }
 }, [BACKEND_API_BASE_URL, setChatToken]);
 
-        // ✅ ฟังก์ชันสำหรับดึง Restream Channels
-    const fetchRestreamChannels = useCallback(async (accessToken?: string | null) => {
-        const tokenToUse = accessToken || restreamAccessToken;
-
-        if (!tokenToUse) {
-            console.log('No Restream Access Token available. Clearing channels and skipping fetch/interval.');
-            dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: [] });
-            return;
-        }
-
-        console.log('Fetching Restream channels with token. Length:', tokenToUse.length);
-        try {
-            const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels`, {
-                headers: {
-                    'Authorization': `Bearer ${tokenToUse}`
-                }
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error("Back-End API response not OK:", response.status, errorData);
-                if (response.status === 401) {
-                    setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
-                    localStorage.removeItem('restream-access-token');
-                    localStorage.removeItem('restream-refresh-token');
-                    setRestreamAccessToken(null);
-                    setRestreamRefreshToken(null);
-                }
-                throw new Error(`HTTP error! status: ${response.status} - ${JSON.stringify(errorData)}`);
-            }
-
-            const data = await response.json();
-            console.log('--- Data from Back-End (in App.tsx) ---', data);
-
-            if (Array.isArray(data)) {
-                dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: data });
-            } else if (data && Array.isArray(data.channels)) {
-                console.warn("Restream API data is an object with 'channels' key. Using data.channels.");
-                dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: data.channels });
-            } else {
-                console.error("Unexpected data format from Back-End:", data);
-                dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: [] });
-            }
-
-    } catch (error) { // ✅ error: unknown
-        console.error("Failed to fetch Restream channels:", error);
-
-        let errorMessage = 'ไม่ทราบข้อผิดพลาด'; // ข้อความเริ่มต้น
-
-        // ✅ ตรวจสอบประเภทของ error ก่อนเข้าถึง properties
-        if (error instanceof Error) {
-            errorMessage = error.message; // ถ้าเป็น Error object, ใช้ message
-        } else if (typeof error === 'string') {
-            errorMessage = error; // ถ้าเป็น string, ใช้ string นั้นเลย
-        } else {
-            errorMessage = String(error); // แปลงเป็น string
-        }
-
-        if (error instanceof Error && error.message.includes('401')) {
-            // Error 401 (Unauthorized) มักจะถูกจัดการแล้วใน if (!response.ok) block
-            // ดังนั้นตรงนี้อาจไม่ต้องทำอะไรเพิ่มเติม หรือแค่ console.log
-        } else {
-            setModal({ type: 'alert', props: { message: `ไม่สามารถดึงข้อมูลช่อง Restream ได้: ${errorMessage}`, alertType: 'error' } });
-        }
-    }
-    }, [dispatch, setRestreamAccessToken, setRestreamRefreshToken, setModal, restreamAccessToken, BACKEND_API_BASE_URL]);
 
 
     // --- Theme Effect ---
@@ -276,7 +401,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
                 let stream: MediaStream;
 
                 if (obsVirtualCamera) {
-                    console.log("Using OBS Virtual Camera:", obsVirtualCamera.label);
+                    //("Using OBS Virtual Camera:", obsVirtualCamera.label);
                     stream = await navigator.mediaDevices.getUserMedia({
                         video: {
                             deviceId: { exact: obsVirtualCamera.deviceId },
@@ -396,7 +521,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
         };
 
         const onIdentified = async () => {
-            console.log('[DEBUG] OBS identified successfully!');
+           //console.log('[DEBUG] OBS identified successfully!');
             dispatch({ type: 'SET_OBS_STATUS', payload: 'connected' });
             setModal({ type: 'alert', props: { message: 'เชื่อมต่อและยืนยันตัวตนกับ OBS สำเร็จ!', alertType: 'success' } });
             await fetchOBSData();
@@ -512,12 +637,12 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
 
         const initiateFetchAndInterval = async () => {
             if (!restreamAccessToken) {
-                console.log('No Restream Access Token available. Clearing channels and skipping fetch/interval.');
+                //console.log('No Restream Access Token available. Clearing channels and skipping fetch/interval.');
                 dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: [] });
                 return;
             }
 
-            console.log('Restream Access Token exists. Starting channel fetch and interval.');
+            //console.log('Restream Access Token exists. Starting channel fetch and interval.');
             await fetchRestreamChannels();
 
             intervalId = window.setInterval(fetchRestreamChannels, 30000); // Poll every 30 seconds
@@ -529,7 +654,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
             if (intervalId) {
                 window.clearInterval(intervalId);
             }
-            console.log('Restream channels useEffect cleanup.');
+            //console.log('Restream channels useEffect cleanup.');
         };
     }, [restreamAccessToken, fetchRestreamChannels, dispatch]);
 
@@ -625,7 +750,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
             return;
         }
         try {
-            console.log("🚀 Attempting to start the main stream to Restream.io...");
+            //console.log("🚀 Attempting to start the main stream to Restream.io...");
             await obs.current.call('StartStream');
         } catch (error: any) {
             console.error("❌ Failed to start stream:", error);
@@ -788,66 +913,6 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
         }
     }, [BACKEND_API_BASE_URL, setModal]);
 
-
-const handleToggleRestreamChannel = useCallback(async (channelId: number, currentEnabledState: boolean) => {
-    const tokenToUse = restreamAccessToken || localStorage.getItem('restream-access-token');
-    if (!tokenToUse) {
-        setModal({ type: 'alert', props: { message: 'ไม่มี Token สำหรับ Restream.io กรุณาเชื่อมต่อบัญชีใหม่', alertType: 'info' } });
-        return;
-    }
-
-    const newEnabledState = !currentEnabledState;
-
-    try {
-        const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels/${channelId}`, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tokenToUse}`
-            },
-            body: JSON.stringify({ enabled: newEnabledState })
-        });
-
-        if (!response.ok) {
-            // ✅ ย้ายการประกาศ errorData มาไว้ที่นี่ เพื่อให้มี scope กว้างขึ้น
-            const errorData = await response.json(); // ✅ ประกาศตัวแปร errorData ที่นี่
-            console.error("Back-End API response not OK:", response.status, errorData);
-            if (response.status === 401) {
-                setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
-                localStorage.removeItem('restream-access-token');
-                localStorage.removeItem('restream-refresh-token');
-                setRestreamAccessToken(null);
-                setRestreamRefreshToken(null);
-            }
-            // ✅ ใช้ errorData.message ที่นี่ได้แล้ว
-            throw new Error(`Failed to update channel status: ${errorData.message || response.statusText}`);
-        }
-
-        const updatedChannelData = await response.json();
-        dispatch({
-            type: 'UPDATE_RESTREAM_CHANNEL_STATUS',
-            payload: { channelId: channelId, enabled: updatedChannelData.active }
-        });
-
-        const nameToDisplay = appState.restreamChannels.find(c => c.id === channelId)?.name || 'ช่อง';
-
-        setModal({ type: 'alert', props: { message: `อัปเดตสถานะช่อง ${nameToDisplay} เป็น ${newEnabledState ? 'เปิด' : 'ปิด'} สำเร็จ!`, alertType: 'success' } });
-
-        fetchRestreamChannels();
-
-    } catch (error) { // ✅ error: unknown
-        console.error('Error toggling Restream channel status:', error);
-        let errorMessage = 'ไม่ทราบข้อผิดพลาด'; // ข้อความเริ่มต้น
-        if (error instanceof Error) {
-            errorMessage = error.message; // ถ้าเป็น Error object, ใช้ message
-        } else if (typeof error === 'string') {
-            errorMessage = error; // ถ้าเป็น string, ใช้ string นั้นเลย
-        } else {
-            errorMessage = String(error); // แปลงเป็น string
-        }
-        setModal({ type: 'alert', props: { message: `ไม่สามารถอัปเดตสถานะช่องได้: ${errorMessage}`, alertType: 'error' } });
-    }
-}, [restreamAccessToken, fetchRestreamChannels, setModal, setRestreamAccessToken, setRestreamRefreshToken, dispatch, BACKEND_API_BASE_URL, appState.restreamChannels]);
 
     const obsStatusMap = {
         connected: { text: 'Connected', iconColor: 'bg-green-500' },
@@ -1155,10 +1220,10 @@ const CommentsTab: FC<{ comments: Comment[]; onSendComment: (text: string) => vo
     //const embedUrl = chatToken ? `${RESTREAM_API_BASE_URL}/embed?token=${chatToken}` : ''; // ✅ สร้าง URL จาก chatToken
 
 
-    console.log("CommentsTab received chatToken:", chatToken); // ✅ เพิ่ม log นี้
+    //console.log("CommentsTab received chatToken:", chatToken); // ✅ เพิ่ม log นี้
     //const embedUrl = chatToken ? `https://chat.restream.io/embed?token=${chatToken}` : '';
     const embedUrl = chatToken; 
-    console.log("CommentsTab embedUrl:", embedUrl); // ✅ เพิ่ม log นี้
+    //console.log("CommentsTab embedUrl:", embedUrl); // ✅ เพิ่ม log นี้
 
 
 
@@ -1352,7 +1417,7 @@ const SettingsTab: FC<{
 
     useEffect(() => {
         if (platform === 'restream') {
-            console.log("SettingsTab: Fetching Restream channels on tab open.");
+            //console.log("SettingsTab: Fetching Restream channels on tab open.");
             onFetchRestreamChannels(); // ✅ เรียกใช้ฟังก์ชันนี้ได้แล้ว
         }
     }, [platform, onFetchRestreamChannels]);
@@ -1662,7 +1727,7 @@ const SettingsModal: FC<{
                         encoder: encoder,
                     };
 
-                    console.log('Attempting to set output settings with:', newSettings);
+                    //console.log('Attempting to set output settings with:', newSettings);
 
                     await obs.call('SetOutputSettings', { outputName: streamOutput.outputName as string, outputSettings: newSettings });
 

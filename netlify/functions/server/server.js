@@ -56,8 +56,8 @@ const handler = async (event, context) => {
     // เช่นถ้า event.path คือ '/.netlify/functions/server/api/auth/restream', apiPath จะเป็น '/api/auth/restream'
     const apiPath = event.path.replace(functionBasePath, '');
 
-    console.log(`Function received request: ${event.httpMethod} ${event.path}`);
-    console.log(`Parsed API Path: ${apiPath}`);
+    //console.log(`Function received request: ${event.httpMethod} ${event.path}`);
+    //console.log(`Parsed API Path: ${apiPath}`);
 
     try {
         // ✅ 5.4 จัดการ Route ต่างๆ (คล้ายกับ Express Router แต่ใช้ if/else if)
@@ -147,7 +147,7 @@ const handler = async (event, context) => {
                 }
 
                 const tokenData = await tokenResponse.json();
-                console.log('Successfully received Restream tokens:', tokenData);
+                //console.log('Successfully received Restream tokens:', tokenData);
 
                 const frontendRedirectUrl = `https://prismatic-sorbet-b852f8.netlify.app/settings?auth_status=success&access_token=${tokenData.access_token}&refresh_token=${tokenData.refresh_token || ''}`;
                 
@@ -175,7 +175,7 @@ const handler = async (event, context) => {
             const accessToken = authHeader ? authHeader.split(' ')[1] : null;
 
             if (!accessToken) {
-                console.log('000')
+                //console.log('000')
                 return {
                     statusCode: 401,
                     headers: headers,
@@ -184,7 +184,7 @@ const handler = async (event, context) => {
             }
 
             try {
-                console.log('111 : ' + accessToken)
+                //console.log('111 : ' + accessToken)
 
                 // ✅ เรียก Restream API สำหรับ Chat URL
                 const response = await fetch(`${RESTREAM_API_BASE_URL}/v2/user/webchat/url`, {
@@ -196,7 +196,7 @@ const handler = async (event, context) => {
                 });
 
                 if (!response.ok) {
-                    console.log('222')
+                    //console.log('222')
                     const errorText = await response.text();
                     console.error(`Error from Restream API (${response.status}) fetching chat token:`, errorText);
                     if (response.status === 401 || response.status === 403) {
@@ -214,10 +214,10 @@ const handler = async (event, context) => {
                         body: JSON.stringify({ error: `Failed to fetch chat token: ${errorText}` }),
                     };
                 }
-                console.log('444')
+                //console.log('444')
                 const data = await response.json(); // Response จาก Restream API: { "webChatUrl": "https://chat.restream.io/embed?token=xxx" }
                 const webChatUrl = data.webchatUrl; // ✅ นี่คือ URL เต็มที่ได้จาก Restream API
-                console.log('111.111 : ' + webChatUrl)
+                //console.log('111.111 : ' + webChatUrl)
 
                if (!webChatUrl) { // ตรวจสอบว่า webChatUrl มีค่าหรือไม่
                     console.error("webChatUrl property is missing or null in Restream API response:", data);
@@ -392,7 +392,7 @@ const handler = async (event, context) => {
                 }
 
                 const updatedChannel = await response.json();
-                console.log(`Successfully updated channel ${channelId} to enabled=${enabled}:`, updatedChannel);
+               // console.log(`Successfully updated channel ${channelId} to enabled=${enabled}:`, updatedChannel);
                 return {
                     statusCode: 200,
                     headers: headers,
@@ -406,6 +406,55 @@ const handler = async (event, context) => {
                     headers: headers,
                     body: JSON.stringify({ error: 'Internal Server Error' }),
                 };
+            }
+        }
+        // Route: POST /api/auth/restream/refresh-token
+        else if (apiPath === '/api/auth/restream/refresh-token' && event.httpMethod === 'POST') {
+            let requestBody;
+            try {
+                requestBody = JSON.parse(event.body || '{}');
+            } catch (e) {
+                return { statusCode: 400, headers: headers, body: JSON.stringify({ error: 'Invalid JSON body.' }) };
+            }
+            const refreshToken = requestBody.refreshToken;
+
+            if (!refreshToken) {
+                return { statusCode: 400, headers: headers, body: JSON.stringify({ error: 'Refresh token is missing.' }) };
+            }
+
+            if (!RESTREAM_CLIENT_ID || !RESTREAM_CLIENT_SECRET) {
+                return { statusCode: 500, headers: headers, body: JSON.stringify({ error: 'Server config missing for OAuth.' }) };
+            }
+
+            try {
+                const tokenResponse = await fetch(RESTREAM_OAUTH_TOKEN_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        grant_type: 'refresh_token',
+                        client_id: RESTREAM_CLIENT_ID,
+                        client_secret: RESTREAM_CLIENT_SECRET,
+                        refresh_token: refreshToken,
+                    }).toString(),
+                });
+
+                if (!tokenResponse.ok) {
+                    const errorData = await tokenResponse.json();
+                    console.error('Error refreshing token:', errorData);
+                    return {
+                        statusCode: tokenResponse.status,
+                        headers: headers,
+                        body: JSON.stringify({ error: errorData.error_description || 'Failed to refresh token.' }),
+                    };
+                }
+
+                const data = await tokenResponse.json();
+                // data จะมี access_token ใหม่ (และอาจมี refresh_token ใหม่ด้วย)
+                return { statusCode: 200, headers: headers, body: JSON.stringify(data) };
+
+            } catch (error) {
+                console.error('Server error during token refresh:', error);
+                return { statusCode: 500, headers: headers, body: JSON.stringify({ error: 'Internal Server Error' }) };
             }
         }
         // ✅ จัดการ Route ที่ไม่รู้จัก
