@@ -762,7 +762,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
 
                 // ✅ เปลี่ยนค่า Interval จาก 30000 (30 วินาที)
                 //    เป็น 300000 (5 นาที) หรือ 600000 (10 นาที)
-            intervalId = window.setInterval(fetchRestreamChannels, 3000); // Poll every 5 minutes (300,000 ms)
+            intervalId = window.setInterval(fetchRestreamChannels, 30000); // Poll every 5 minutes (300,000 ms)
 
         };
 
