@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, FC, useReducer } from 'react';
+import StreamDetailsModal from './components/StreamDetailsModal'; // ✅ เพิ่มบรรทัดนี้เข้ามา
 // ใน src/App.tsx, บรรทัดแรกๆ ของไฟล์
 import useLocalStorage from './hooks/useLocalStorage';
 import { ObsManagementPanel } from './components/ObsManagementPanel';
@@ -17,7 +18,7 @@ import OBSWebSocket from 'obs-websocket-js';
 import {
     Product, Comment, OBSScene, OBSSource, OBSAudioInput, AppState, Action, RestreamChannel
 } from './types'; // ✅ นำเข้าจากไฟล์ types.ts
-import StreamDetailsModal from './components/StreamDetailsModal'; // ✅ เพิ่มบรรทัดนี้เข้ามา
+
 // ====================================================================
 // Environment Variables
 // ====================================================================

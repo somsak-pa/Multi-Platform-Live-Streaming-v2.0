@@ -1,5 +1,5 @@
 // src/components/StreamDetailsModal.tsx
-import React, { FC, useState } from 'react';
+import React, { FC, useState, useRef } from 'react'; // ✅ เพิ่ม useRef ตรงนี้
 import { FaUpload } from 'react-icons/fa6'; // หรือ FaCloudUploadAlt, FaImage
 
 interface StreamDetailsModalProps {
