@@ -762,7 +762,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
 
                 // ✅ เปลี่ยนค่า Interval จาก 30000 (30 วินาที)
                 //    เป็น 300000 (5 นาที) หรือ 600000 (10 นาที)
-            intervalId = window.setInterval(fetchRestreamChannels, 300000); // Poll every 5 minutes (300,000 ms)
+            intervalId = window.setInterval(fetchRestreamChannels, 3000); // Poll every 5 minutes (300,000 ms)
 
         };
 
@@ -1455,13 +1455,13 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
     };
 
     // ✅ เพิ่มฟังก์ชัน handleViewLive
-    const handleViewLive = (url: string | undefined) => {
-        if (url) {
-            window.open(url, '_blank'); // เปิดในแท็บใหม่
+    const handleViewLive = (channel: RestreamChannel) => { // ฟังก์ชันนี้ถูกต้องแล้ว รับ channel object
+        if (channel.status === 'online' && channel.url) {
+            window.open(channel.url, '_blank');
+        } else if (channel.status === 'offline') {
+            alert('ไม่ได้ไลฟ์สดในขณะนี้');
         } else {
-            // อาจจะแจ้งเตือนผู้ใช้ว่าไม่มี URL สำหรับช่องนี้
-            // alert('ไม่พบ URL สำหรับช่องนี้');
-            console.warn('Channel URL is not available.');
+            console.warn('Channel URL is not available or status is not online.', channel);
         }
     };
     return (
@@ -1518,10 +1518,11 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
                                         {channel.privacy === 'public' && <span className="text-blue-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-800">Public</span>}
                                     </div>
                                     <div
-                                        className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1 cursor-pointer hover:underline" // ✅ เพิ่ม cursor-pointer และ hover:underline
-                                        onClick={() => handleViewLive(channel.url)}>{getPlatformIcon(channel.platform)}
-                                        <span>ดูไลฟ์สด...</span>
-                                    </div>
+                                            className={`text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1 ${channel.status === 'online' ? 'cursor-pointer hover:underline' : 'cursor-not-allowed'}`}
+                                            onClick={() => handleViewLive(channel)}>
+                                            {getPlatformIcon(channel.platform)}
+                                    <span>ดูไลฟ์สด...</span>
+                                </div>
                                 </div>
                             </div>
                             
