@@ -348,12 +348,13 @@ const handleToggleRestreamChannel = useCallback(async (channelId: number, curren
 
 // ✅ ฟังก์ชันสำหรับเปิด StreamDetailsModal
 const handleOpenStreamDetails = useCallback(() => {
-    // คุณต้องดึง Stream Title และ Description ปัจจุบันมาแสดง
-    // อาจจะดึงจาก appState.streamTitle (สำหรับ OBS)
-    // หรือดึงจาก Restream API /v2/user/channel-meta/primary_channel_id ถ้าคุณมี (แต่ยังไม่มี API นี้ใน Backend)
-    // สำหรับตอนนี้ เราจะใช้ appState.streamTitle และ placeholder description ไปก่อน
+    console.log("handleOpenStreamDetails ถูกเรียกแล้ว!");
     const currentTitle = appState.streamTitle;
     const currentDescription = "Restream helps you multistream & reach your audience, wherever they are."; // Placeholder
+
+
+
+
 
     // ✅ คุณต้องระบุ primaryChannelId ที่ถูกต้อง
     // Restream API สำหรับ channel-meta มักใช้ ID ของช่องหลัก
@@ -361,7 +362,9 @@ const handleOpenStreamDetails = useCallback(() => {
     // สำหรับตอนนี้ ใช้ placeholder
     const primaryChannel = appState.restreamChannels.find(c => c.isPrimary || c.platform === 'YouTube'); // สมมติว่าช่อง YouTube เป็นช่องหลัก
     const primaryChannelId = primaryChannel ? String(primaryChannel.id) : null;
-
+    console.log("currentTitle ก่อนตั้งค่า Modal:", currentTitle);
+    console.log("currentDescription ก่อนตั้งค่า Modal:", currentDescription);
+    console.log("primaryChannelId ก่อนตั้งค่า Modal:", primaryChannelId); // ตอนนี้จะไม่ Error แล้ว
     if (!primaryChannelId) {
         setModal({ type: 'alert', props: { message: 'ไม่พบช่องหลักสำหรับอัปเดตรายละเอียดสตรีม', alertType: 'error' } });
         return;
