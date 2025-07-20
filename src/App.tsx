@@ -101,12 +101,12 @@ function appReducer(state: AppState, action: Action): AppState {
             };
         case 'SET_RESTREAM_CHANNELS':
             return { ...state, restreamChannels: action.payload };
-        case 'UPDATE_RESTREAM_CHANNEL_STATUS':
+        case 'UPDATE_RESTREAM_CHANNEL_STATUS': // เพิ่ม Action ใหม่
             return {
                 ...state,
                 restreamChannels: state.restreamChannels.map(channel =>
                     channel.id === action.payload.channelId
-                        ? { ...channel, enabled: action.payload.enabled, status: action.payload.enabled ? 'online' : 'offline' }
+                        ? { ...channel, enabled: action.payload.enabled, status: action.payload.enabled ? 'online' : 'offline' } // ✅ ตรวจสอบว่าอัปเดต 'status' ด้วย
                         : channel
                 ),
             };
@@ -206,7 +206,7 @@ const fetchRestreamChannels = useCallback(async (accessToken?: string | null) =>
         return;
     }
 
-    console.log('Fetching Restream channels with token. Length:', tokenToUse.length);
+    //console.log('Fetching Restream channels with token. Length:', tokenToUse.length);
     try {
         const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channels`, {
             headers: {
@@ -240,7 +240,7 @@ const fetchRestreamChannels = useCallback(async (accessToken?: string | null) =>
         }
 
         const data = await response.json();
-        console.log('--- Data from Back-End (in App.tsx) ---', data);
+        //console.log('--- Data from Back-End (in App.tsx) ---', data);
 
         if (Array.isArray(data)) {
             dispatch({ type: 'SET_RESTREAM_CHANNELS', payload: data });
