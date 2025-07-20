@@ -1289,9 +1289,13 @@ interface ChannelsTabProps {
     onToggleChannelEnabled: (channelId: number, currentEnabledState: boolean) => void;
 }
 const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamChannels, onToggleChannelEnabled }) => {
+        // ✅ เพิ่ม State ใหม่สำหรับ Loading
+    const [isToggling, setIsToggling] = useState<number | null>(null); // เก็บ channelId ที่กำลัง toggling
+
     useEffect(() => {
         onFetchRestreamChannels(); // ดึง channels เมื่อ component mount
     }, [onFetchRestreamChannels]);
+
     // Helper function เพื่อคืนค่า Icon ของ Platform (สามารถขยายได้)
     const getPlatformIcon = (platformName: string) => {
         switch (platformName) {
@@ -1299,22 +1303,31 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
             case 'YouTube': return <FaYoutube className="text-red-600" />;
             case 'Twitch': return <FaTiktok className="text-purple-600" />; // ใช้ TikTok icon ชั่วคราว ถ้าไม่มี Twitch icon
             case 'X (Twitter)': return <FaTiktok className="text-gray-800 dark:text-white" />; // ใช้ TikTok icon ชั่วคราว
-            case 'TikTok': return <FaTiktok className="text-black dark:text-white" />; // เพิ่ม TikTok
-            // เพิ่ม case อื่นๆ
+            case 'TikTok': return <FaTiktok className="text-black dark:text-white" />;
             default: return <FaGlobe className="text-gray-500" />;
         }
     };
+
+    // ✅ Wrapper สำหรับ onToggleChannelEnabled เพื่อจัดการ Loading State
+    const handleToggleAndLoad = async (channelId: number, currentEnabledState: boolean) => {
+        setIsToggling(channelId); // ตั้งค่า channelId ที่กำลัง toggling
+        try {
+            await onToggleChannelEnabled(channelId, currentEnabledState);
+        } finally {
+            setIsToggling(null); // ไม่ว่าสำเร็จหรือล้มเหลว ให้เคลียร์สถานะ toggling
+        }
+    };
+
+
     return (
         <div className="space-y-4">
-            {/* Header: Your Channels, Paired Channels */}
             <div className="flex justify-between items-center pb-2 border-b border-gray-200 dark:border-gray-700">
                 <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100">Your Channels</h3>
                 <button className="text-blue-500 hover:text-blue-400 font-semibold text-sm flex items-center">
-                    Paired Channels <FaChevronDown className="ml-1 text-xs" /> {/* ใช้ FaChevronDown ที่ import มา */}
+                    Paired Channels <FaChevronDown className="ml-1 text-xs" />
                 </button>
             </div>
 
-            {/* Top Buttons: Add Channel, Update Titles */}
             <div className="flex gap-2 mb-4">
                 <button className="flex-1 py-2 px-4 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 font-semibold flex items-center justify-center text-sm">
                     <FaPlus className="mr-2" /> Add Channel
@@ -1324,7 +1337,6 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
                 </button>
             </div>
 
-            {/* Toggle All (Optional) */}
             <div className="flex justify-end items-center text-sm text-gray-500 dark:text-gray-400">
                 <span>Toggle all</span>
                 <button className="ml-2 px-2 py-1 rounded-full bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-white text-xs font-semibold">OFF</button>
@@ -1342,12 +1354,10 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
                     {restreamChannels.map(channel => (
                         <div key={channel.id} className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg flex items-center justify-between shadow-sm">
                             <div className="flex items-center gap-3">
-                                {/* Profile Picture/Icon */}
                                 <div className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-xl overflow-hidden">
-                                    {/* ถ้ามี URL รูปโปรไฟล์ ให้ใช้ img, ถ้าไม่มีใช้ icon ของ platform */}
-                                    {channel.platform === 'YouTube' ? getPlatformIcon(channel.platform) : // ตัวอย่าง: ถ้า YouTube ให้ใช้ Icon
+                                    {channel.platform === 'YouTube' ? getPlatformIcon(channel.platform) :
                                      channel.platform === 'Facebook' ? getPlatformIcon(channel.platform) :
-                                     <FaUsers className="text-gray-500 dark:text-gray-300" />} {/* Icon Default เช่น FaUsers */}
+                                     <FaUsers className="text-gray-500 dark:text-gray-300" />}
                                 </div>
                                 
                                 <div>
@@ -1358,12 +1368,11 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
                                         ) : (
                                             <span className="text-gray-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-600">Offline</span>
                                         )}
-                                        {/* Public tag จาก Restream ถ้ามี */}
                                         {channel.privacy === 'public' && <span className="text-blue-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-800">Public</span>}
                                     </div>
                                     <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1">
                                         {getPlatformIcon(channel.platform)}
-                                        <span>Stream via RTMP (OBS, Vmix, Zoom) with Restr...</span> {/* ข้อความจาก Restream.io */}
+                                        <span>Stream via RTMP (OBS, Vmix, Zoom) with Restr...</span>
                                     </div>
                                 </div>
                             </div>
@@ -1375,23 +1384,28 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
                                     id={`toggle-${channel.id}`}
                                     className="sr-only peer"
                                     checked={channel.enabled}
-                                    onChange={() => onToggleChannelEnabled(channel.id, channel.enabled)}
+                                    // ✅ ใช้ handleToggleAndLoad แทน onToggleChannelEnabled โดยตรง
+                                    onChange={() => handleToggleAndLoad(channel.id, channel.enabled)}
+                                    // ✅ Disable ปุ่มในขณะที่กำลัง toggling
+                                    disabled={isToggling === channel.id} 
                                 />
                                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                {/* ✅ แสดง Spinner เมื่อกำลัง toggling */}
+                                {isToggling === channel.id && (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-gray-500/50 rounded-full">
+                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    </div>
+                                )}
                             </label>
                         </div>
                     ))}
                 </div>
             )}
-
-            {/* Optional: Live streaming disabled message */}
-            {/* คุณสามารถเพิ่มเงื่อนไขเพื่อแสดงข้อความนี้ได้ เช่น ถ้าบางช่องถูก disable หรือมีปัญหา API */}
-            {/* <div className="mt-4 p-3 rounded-lg bg-red-100 dark:bg-red-900 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 flex items-center text-sm">
-                <FaCircleExmark className="mr-2 text-xl" /> Live streaming disabled. <a href="#" className="underline ml-1">Learn more</a>
-            </div> */}
         </div>
     );
-
 };
 
 
