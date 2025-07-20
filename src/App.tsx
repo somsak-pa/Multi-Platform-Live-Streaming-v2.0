@@ -1510,18 +1510,18 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
                                 <div>
                                     <div className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                                         <span>{channel.name}</span>
-                                        {channel.privacy === 'public' ? (
-                                            <span className="text-green-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-800">Public</span>
+                                        {channel.status === 'online' ? (
+                                            <span className="text-green-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-800">Live</span>
                                         ) : (
-                                            <span className="text-gray-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-600">Private</span>
+                                            <span className="text-gray-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-600">Offline</span>
                                         )}
-                                        {/* {channel.privacy === 'public' && <span className="text-blue-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-800">Public</span>} */}
+                                        {channel.privacy === 'public' && <span className="text-blue-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-800">Public</span>} {/* ✅ ใช้ channel.privacy ตรงนี้ */}
                                     </div>
                                     <div
                                             className={`text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1 ${channel.status === 'online' ? 'cursor-pointer hover:underline' : 'cursor-not-allowed'}`}
                                             onClick={() => handleViewLive(channel)}>
                                             {getPlatformIcon(channel.platform)}
-                                    <span>ดูไลฟ์สด...</span>
+                                            <span>ดูไลฟ์สด...</span>
                                 </div>
                                 </div>
                             </div>
