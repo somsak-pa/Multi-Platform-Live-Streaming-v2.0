@@ -1260,7 +1260,7 @@ const StreamPanel: FC<{
         onStopStream,
         onCheckSettings,
         isObsConnected,
-        onOpenStreamDetails,
+        // onOpenStreamDetails,
     } = props;
 
     return (
@@ -1285,7 +1285,7 @@ const StreamPanel: FC<{
                 <button onClick={onStartStream} disabled={!isObsConnected || isStreaming} className="control-btn bg-green-600 hover:bg-green-700 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaPlay className="mr-2" />เริ่มไลฟ์</button>
                 <button onClick={onStopStream} disabled={!isObsConnected || !isStreaming} className="control-btn bg-red-600 hover:bg-red-700 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaStop className="mr-2" />หยุดไลฟ์</button>
                 <button onClick={onCheckSettings} disabled={!isObsConnected} className="control-btn bg-yellow-500 hover:bg-yellow-600 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaCheckDouble className="mr-2" />ตรวจสอบค่า</button>
-                <button onClick={onOpenStreamDetails} className="control-btn bg-blue-600 hover:bg-blue-700 rounded-lg text-white px-4 flex items-center justify-center">แก้ไข Stream Details</button>
+                {/* <button onClick={onOpenStreamDetails} className="control-btn bg-blue-600 hover:bg-blue-700 rounded-lg text-white px-4 flex items-center justify-center">แก้ไข Stream Details</button> */}
             </div>
         </>
     );
