@@ -1454,7 +1454,16 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
         }
     };
 
-
+    // ✅ เพิ่มฟังก์ชัน handleViewLive
+    const handleViewLive = (url: string | undefined) => {
+        if (url) {
+            window.open(url, '_blank'); // เปิดในแท็บใหม่
+        } else {
+            // อาจจะแจ้งเตือนผู้ใช้ว่าไม่มี URL สำหรับช่องนี้
+            // alert('ไม่พบ URL สำหรับช่องนี้');
+            console.warn('Channel URL is not available.');
+        }
+    };
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center pb-2 border-b border-gray-200 dark:border-gray-700">
@@ -1508,9 +1517,10 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
                                         )}
                                         {channel.privacy === 'public' && <span className="text-blue-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-800">Public</span>}
                                     </div>
-                                    <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1">
-                                        {getPlatformIcon(channel.platform)}
-                                        <span>Stream via RTMP (OBS, Vmix, Zoom) with Restr...</span>
+                                    <div
+                                        className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1 cursor-pointer hover:underline" // ✅ เพิ่ม cursor-pointer และ hover:underline
+                                        onClick={() => handleViewLive(channel.url)}>{getPlatformIcon(channel.platform)}
+                                        <span>ดูไลฟ์สด...</span>
                                     </div>
                                 </div>
                             </div>
