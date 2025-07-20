@@ -131,7 +131,7 @@ const App: FC = () => {
     const [appState, dispatch] = useReducer(appReducer, initialState);
     const [modal, setModal] = useState<{ type: 'alert' | 'confirm' | 'product' | 'settings' | 'streamDetails' | null; props?: any }>({ type: null });
     const [sceneModal, setSceneModal] = useState<{ type: 'add' | null; props?: any }>({ type: null });
-
+    const [streamDetailsModal, setStreamDetailsModal] = useState<{ isOpen: boolean; currentTitle: string; currentDescription: string; primaryChannelId: string | null } | null>(null);
     const [restreamAccessToken, setRestreamAccessToken] = useState<string | null>(localStorage.getItem('restream-access-token'));
     const [restreamRefreshToken, setRestreamRefreshToken] = useState<string | null>(localStorage.getItem('restream-refresh-token')); // ✅ restreamRefreshToken state
     const [chatToken, setChatToken] = useState<string | null>(null); // ✅ chatToken state
@@ -348,71 +348,112 @@ const handleToggleRestreamChannel = useCallback(async (channelId: number, curren
 
 // ✅ ฟังก์ชันสำหรับเปิด StreamDetailsModal
 const handleOpenStreamDetails = useCallback(() => {
+    // คุณต้องดึง Stream Title และ Description ปัจจุบันมาแสดง
+    // อาจจะดึงจาก appState.streamTitle (สำหรับ OBS)
+    // หรือดึงจาก Restream API /v2/user/channel-meta/primary_channel_id ถ้าคุณมี (แต่ยังไม่มี API นี้ใน Backend)
+    // สำหรับตอนนี้ เราจะใช้ appState.streamTitle และ placeholder description ไปก่อน
+    const currentTitle = appState.streamTitle;
+    const currentDescription = "Restream helps you multistream & reach your audience, wherever they are."; // Placeholder
 
-    setModal({ type: 'streamDetails', props: {} });
-}, [setModal]);
+    // ✅ คุณต้องระบุ primaryChannelId ที่ถูกต้อง
+    // Restream API สำหรับ channel-meta มักใช้ ID ของช่องหลัก
+    // อาจจะต้องดึง primaryChannelId มาจาก appState.restreamChannels หรือจากการตั้งค่าผู้ใช้
+    // สำหรับตอนนี้ ใช้ placeholder
+    const primaryChannel = appState.restreamChannels.find(c => c.isPrimary || c.platform === 'YouTube'); // สมมติว่าช่อง YouTube เป็นช่องหลัก
+    const primaryChannelId = primaryChannel ? String(primaryChannel.id) : null;
 
-// ✅ ฟังก์ชันสำหรับบันทึก Stream Details (เรียกจาก StreamDetailsModal)
-//    channelId คือ ID ของช่องหลักที่ต้องการอัปเดต (อาจจะจาก appState.restreamChannels)
-//    data: { title: string, description: string }
+    if (!primaryChannelId) {
+        setModal({ type: 'alert', props: { message: 'ไม่พบช่องหลักสำหรับอัปเดตรายละเอียดสตรีม', alertType: 'error' } });
+        return;
+    }
+
+    setStreamDetailsModal({
+        isOpen: true,
+        currentTitle: currentTitle,
+        currentDescription: currentDescription,
+        primaryChannelId: primaryChannelId
+    });
+}, [appState.streamTitle, appState.restreamChannels, setModal]);
+
 const handleUpdateStreamDetails = useCallback(async (channelId: string, title: string, description: string) => {
+    // ✅ 1. ดึง Access Token ที่ใช้งานอยู่
     const tokenToUse = restreamAccessToken || localStorage.getItem('restream-access-token');
     if (!tokenToUse) {
         setModal({ type: 'alert', props: { message: 'กรุณาเชื่อมต่อ Restream เพื่ออัปเดตรายละเอียดสตรีม', alertType: 'info' } });
-        return false; // ส่ง false เพื่อบอกว่าไม่สำเร็จ
+        return false; // แจ้งว่าไม่สำเร็จ
+    }
+
+    // ✅ 2. ตรวจสอบว่ามี Channel ID หรือไม่
+    if (!channelId) {
+        setModal({ type: 'alert', props: { message: 'ไม่พบ Channel ID สำหรับอัปเดตรายละเอียดสตรีม', alertType: 'error' } });
+        return false;
     }
 
     try {
+        // ✅ 3. สร้าง Payload สำหรับ Restream API (PATCH /v2/user/channel-meta/{channelId})
         const payload = {
             title: title,
-            // Restream API อาจใช้ key อื่นสำหรับ description เช่น 'description' หรือ 'metadata.description'
-            // ต้องตรวจสอบเอกสาร Restream API สำหรับ /v2/user/channel-meta/{channelId} อีกครั้ง
-            // หรือส่งแค่ title ก่อน แล้วค่อยเพิ่ม description
-            description: description // สมมติว่า API รับ description โดยตรง
+            // Restream API สำหรับ Channel Meta อาจใช้ 'description' หรือ 'metadata.description'
+            // จากตัวอย่าง curl คือ 'title' และต้องทดสอบ 'description' ด้วย
+            description: description // สมมติว่า API รับ 'description' โดยตรง
         };
 
-        const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channel-meta/${channelId}`, { // ✅ Endpoint ใหม่ใน Backend Function
+        // ✅ 4. เรียก Backend Function ของคุณ (PATCH /api/restream-channel-meta/:channelId)
+        const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channel-meta/${channelId}`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tokenToUse}`
+                'Authorization': `Bearer ${tokenToUse}` // ใช้ Access Token ที่ได้มา
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload) // ส่ง Payload ที่สร้าง
         });
 
+        // ✅ 5. จัดการ Response จาก Backend
         if (!response.ok) {
             const errorData = await response.json();
+            console.error('Error updating stream details in Backend:', response.status, errorData);
+            
+            // ✅ จัดการ Refresh Token หาก Token หมดอายุ (401 หรือ 403)
             if (response.status === 401 || response.status === 403) {
                 const currentRefreshToken = localStorage.getItem('restream-refresh-token');
                 if (currentRefreshToken) {
+                    console.log("Access token expired, attempting to refresh token for stream details update...");
                     const newAccessToken = await refreshAccessToken(currentRefreshToken);
                     if (newAccessToken) {
-                        console.log("Retrying updateStreamDetails with new token.");
-                        return await handleUpdateStreamDetails(channelId, title, description); // Retry with new token
+                        console.log("Retrying handleUpdateStreamDetails with new token.");
+                        // ✅ เรียกฟังก์ชันตัวเองซ้ำด้วย Access Token ใหม่
+                        return await handleUpdateStreamDetails(channelId, title, description);
                     }
                 }
+                // ถ้า Refresh Token ไม่มี หรือ Refresh ล้มเหลว
                 setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
                 localStorage.removeItem('restream-access-token');
                 localStorage.removeItem('restream-refresh-token');
                 setRestreamAccessToken(null);
                 setRestreamRefreshToken(null);
-                return false;
             }
-            throw new Error(`HTTP error! status: ${response.status} - ${JSON.stringify(errorData)}`);
+            // Throw Error หากมีปัญหาอื่นที่ไม่ใช่ Token หมดอายุ
+            throw new Error(`HTTP error! status: ${response.status} - ${errorData.message || response.statusText}`);
         }
 
+        // ✅ 6. ถ้าอัปเดตสำเร็จ
+        const updatedRestreamDetails = await response.json(); // รับ Response จาก Backend
+        console.log("Successfully updated stream details:", updatedRestreamDetails);
+        
         setModal({ type: 'alert', props: { message: 'อัปเดตรายละเอียดสตรีมสำเร็จ!', alertType: 'success' } });
-        fetchRestreamChannels(); // ดึง channels ใหม่เพื่ออัปเดตข้อมูลที่แสดง
+        
+        // ✅ 7. ดึงข้อมูลช่อง Restream ใหม่ เพื่อให้ UI อัปเดตข้อมูล Stream Title/Description ล่าสุด (ถ้า API มีการคืนค่า)
+        fetchRestreamChannels(); // ดึง channels ใหม่ (ซึ่งรวม metadata ถ้า Restream API คืนค่า)
+        
         return true; // ส่ง true เพื่อบอกว่าสำเร็จ
-
     } catch (error) {
-        console.error('Error updating stream details:', error);
+        console.error('Failed to update stream details:', error);
         let errorMessage = 'ไม่ทราบข้อผิดพลาด';
         if (error instanceof Error) errorMessage = error.message;
         else if (typeof error === 'string') errorMessage = error;
         else errorMessage = String(error);
         setModal({ type: 'alert', props: { message: `ไม่สามารถอัปเดตรายละเอียดสตรีมได้: ${errorMessage}`, alertType: 'error' } });
-        return false;
+        return false; // ส่ง false เพื่อบอกว่าล้มเหลว
     }
 }, [BACKEND_API_BASE_URL, restreamAccessToken, refreshAccessToken, setModal, setRestreamAccessToken, setRestreamRefreshToken, fetchRestreamChannels]);
 
@@ -1088,10 +1129,14 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
             {modal.type === 'confirm' && <ConfirmModal {...modal.props} onClose={() => setModal({ type: null })} />}
             {modal.type === 'product' && <ProductModal {...modal.props} onClose={() => setModal({ type: null })} />}
             {modal.type === 'settings' && <SettingsModal {...modal.props} obs={obs.current} isConnected={appState.obsStatus === 'connected'} onClose={() => setModal({ type: null })} onAlert={(props) => setModal({type: 'alert', props})} handleConnectRestream={handleConnectRestream} />}
-            {modal.type === 'streamDetails' && ( // ✅ เพิ่ม StreamDetailsModal ตรงนี้
+            {streamDetailsModal && streamDetailsModal.isOpen && (
                 <StreamDetailsModal
-                    onClose={() => setModal({ type: null })}
+                    onClose={() => setStreamDetailsModal(null)} // ✅ ปิด Modal โดยตั้งค่า streamDetailsModal เป็น null
                     onSave={handleUpdateStreamDetails}
+                    // ✅ ส่งข้อมูลที่เก็บใน streamDetailsModal state ไปเป็น Props
+                    currentTitle={streamDetailsModal.currentTitle}
+                    currentDescription={streamDetailsModal.currentDescription}
+                    primaryChannelId={streamDetailsModal.primaryChannelId}
                 />
             )}
             {sceneModal.type === 'add' && <AddSceneModal onAdd={handleAddScene} onClose={() => setSceneModal({ type: null })} />}
