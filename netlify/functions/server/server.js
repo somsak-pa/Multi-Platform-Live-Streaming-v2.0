@@ -457,6 +457,98 @@ const handler = async (event, context) => {
                 return { statusCode: 500, headers: headers, body: JSON.stringify({ error: 'Internal Server Error' }) };
             }
         }
+        // ใน netlify/functions/server/index.js (หรือ server.js)
+// ... (โค้ดด้านบน)
+
+// ✅ Route ใหม่: PATCH /api/restream-channel-meta/:channelId
+else if (apiPath.startsWith('/api/restream-channel-meta/') && event.httpMethod === 'PATCH') {
+    const channelId = apiPath.replace('/api/restream-channel-meta/', '');
+
+    let requestBody;
+    try {
+        requestBody = JSON.parse(event.body || '{}'); // event.body คือ string JSON ที่ส่งมาจาก Frontend
+    } catch (e) {
+        return {
+            statusCode: 400,
+            headers: headers,
+            body: JSON.stringify({ error: 'Invalid JSON body.' }),
+        };
+    }
+    const { title, description } = requestBody; // รับ title และ description จาก body
+
+    const authHeader = event.headers.authorization;
+    const accessToken = authHeader ? authHeader.split(' ')[1] : null;
+
+    if (!accessToken) {
+        return {
+            statusCode: 401,
+            headers: headers,
+            body: JSON.stringify({ error: 'Unauthorized: Access Token required.' }),
+        };
+    }
+
+    // สร้าง Payload สำหรับ Restream API
+    const restreamPayload = {};
+    if (title !== undefined) { restreamPayload.title = title; }
+    if (description !== undefined) { restreamPayload.description = description; }
+    // Restream API อาจมี field อื่นๆ สำหรับ description หรือ metadata.
+    // คุณต้องตรวจสอบเอกสาร Restream API สำหรับ /v2/user/channel-meta/{channelId} อีกครั้ง
+    // เพื่อให้แน่ใจว่า field name ถูกต้อง (เช่น 'metadata', 'description')
+
+    if (Object.keys(restreamPayload).length === 0) {
+        return {
+            statusCode: 400,
+            headers: headers,
+            body: JSON.stringify({ error: 'No valid fields provided for update (title or description).' }),
+        };
+    }
+
+    try {
+        const updateUrl = `${RESTREAM_API_BASE_URL}/v2/user/channel-meta/${channelId}`;
+
+        const response = await fetch(updateUrl, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(restreamPayload)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Error from Restream API (${response.status}) updating channel meta ${channelId}:`, errorText);
+            if (response.status === 401 || response.status === 403) {
+                return {
+                    statusCode: 401,
+                    headers: headers,
+                    body: JSON.stringify({ error: 'Unauthorized: Restream Token invalid or expired.' }),
+                };
+            }
+            return {
+                statusCode: response.status,
+                headers: headers,
+                body: JSON.stringify({ error: `Failed to update channel meta: ${errorText}` }),
+            };
+        }
+
+        const updatedMeta = await response.json(); // Restream API อาจคืนค่า metadata ที่อัปเดตแล้ว
+        return {
+            statusCode: 200,
+            headers: headers,
+            body: JSON.stringify(updatedMeta),
+        };
+
+    } catch (error) {
+        console.error('Server error updating Restream channel meta status:', error);
+        return {
+            statusCode: 500,
+            headers: headers,
+            body: JSON.stringify({ error: 'Internal Server Error' }),
+        };
+    }
+}
+
         // ✅ จัดการ Route ที่ไม่รู้จัก
         else {
             return {

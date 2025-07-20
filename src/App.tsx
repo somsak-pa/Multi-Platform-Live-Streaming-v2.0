@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, FC, useReducer } from 'react';
+// ใน src/App.tsx, บรรทัดแรกๆ ของไฟล์
 import useLocalStorage from './hooks/useLocalStorage';
 import { ObsManagementPanel } from './components/ObsManagementPanel';
 import {
@@ -16,7 +17,7 @@ import OBSWebSocket from 'obs-websocket-js';
 import {
     Product, Comment, OBSScene, OBSSource, OBSAudioInput, AppState, Action, RestreamChannel
 } from './types'; // ✅ นำเข้าจากไฟล์ types.ts
-
+import StreamDetailsModal from './components/StreamDetailsModal'; // ✅ เพิ่มบรรทัดนี้เข้ามา
 // ====================================================================
 // Environment Variables
 // ====================================================================
@@ -127,7 +128,7 @@ const App: FC = () => {
 
     const [isDarkMode, setIsDarkMode] = useLocalStorage<boolean>('theme-dark', false);
     const [appState, dispatch] = useReducer(appReducer, initialState);
-    const [modal, setModal] = useState<{ type: 'alert' | 'confirm' | 'product' | 'settings' | null; props?: any }>({ type: null });
+    const [modal, setModal] = useState<{ type: 'alert' | 'confirm' | 'product' | 'settings' | 'streamDetails' | null; props?: any }>({ type: null });
     const [sceneModal, setSceneModal] = useState<{ type: 'add' | null; props?: any }>({ type: null });
 
     const [restreamAccessToken, setRestreamAccessToken] = useState<string | null>(localStorage.getItem('restream-access-token'));
@@ -344,6 +345,75 @@ const handleToggleRestreamChannel = useCallback(async (channelId: number, curren
     }
 }, [restreamAccessToken, fetchRestreamChannels, setModal, setRestreamAccessToken, setRestreamRefreshToken, dispatch, BACKEND_API_BASE_URL, refreshAccessToken, appState.restreamChannels]); // ✅ Dependencies ทั้งหมด
 
+// ✅ ฟังก์ชันสำหรับเปิด StreamDetailsModal
+const handleOpenStreamDetails = useCallback(() => {
+
+    setModal({ type: 'streamDetails', props: {} });
+}, [setModal]);
+
+// ✅ ฟังก์ชันสำหรับบันทึก Stream Details (เรียกจาก StreamDetailsModal)
+//    channelId คือ ID ของช่องหลักที่ต้องการอัปเดต (อาจจะจาก appState.restreamChannels)
+//    data: { title: string, description: string }
+const handleUpdateStreamDetails = useCallback(async (channelId: string, title: string, description: string) => {
+    const tokenToUse = restreamAccessToken || localStorage.getItem('restream-access-token');
+    if (!tokenToUse) {
+        setModal({ type: 'alert', props: { message: 'กรุณาเชื่อมต่อ Restream เพื่ออัปเดตรายละเอียดสตรีม', alertType: 'info' } });
+        return false; // ส่ง false เพื่อบอกว่าไม่สำเร็จ
+    }
+
+    try {
+        const payload = {
+            title: title,
+            // Restream API อาจใช้ key อื่นสำหรับ description เช่น 'description' หรือ 'metadata.description'
+            // ต้องตรวจสอบเอกสาร Restream API สำหรับ /v2/user/channel-meta/{channelId} อีกครั้ง
+            // หรือส่งแค่ title ก่อน แล้วค่อยเพิ่ม description
+            description: description // สมมติว่า API รับ description โดยตรง
+        };
+
+        const response = await fetch(`${BACKEND_API_BASE_URL}/api/restream-channel-meta/${channelId}`, { // ✅ Endpoint ใหม่ใน Backend Function
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${tokenToUse}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            if (response.status === 401 || response.status === 403) {
+                const currentRefreshToken = localStorage.getItem('restream-refresh-token');
+                if (currentRefreshToken) {
+                    const newAccessToken = await refreshAccessToken(currentRefreshToken);
+                    if (newAccessToken) {
+                        console.log("Retrying updateStreamDetails with new token.");
+                        return await handleUpdateStreamDetails(channelId, title, description); // Retry with new token
+                    }
+                }
+                setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
+                localStorage.removeItem('restream-access-token');
+                localStorage.removeItem('restream-refresh-token');
+                setRestreamAccessToken(null);
+                setRestreamRefreshToken(null);
+                return false;
+            }
+            throw new Error(`HTTP error! status: ${response.status} - ${JSON.stringify(errorData)}`);
+        }
+
+        setModal({ type: 'alert', props: { message: 'อัปเดตรายละเอียดสตรีมสำเร็จ!', alertType: 'success' } });
+        fetchRestreamChannels(); // ดึง channels ใหม่เพื่ออัปเดตข้อมูลที่แสดง
+        return true; // ส่ง true เพื่อบอกว่าสำเร็จ
+
+    } catch (error) {
+        console.error('Error updating stream details:', error);
+        let errorMessage = 'ไม่ทราบข้อผิดพลาด';
+        if (error instanceof Error) errorMessage = error.message;
+        else if (typeof error === 'string') errorMessage = error;
+        else errorMessage = String(error);
+        setModal({ type: 'alert', props: { message: `ไม่สามารถอัปเดตรายละเอียดสตรีมได้: ${errorMessage}`, alertType: 'error' } });
+        return false;
+    }
+}, [BACKEND_API_BASE_URL, restreamAccessToken, refreshAccessToken, setModal, setRestreamAccessToken, setRestreamRefreshToken, fetchRestreamChannels]);
 
 const fetchChatToken = useCallback(async (accessToken: string) => {
     try {
@@ -645,7 +715,10 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
             //console.log('Restream Access Token exists. Starting channel fetch and interval.');
             await fetchRestreamChannels();
 
-            intervalId = window.setInterval(fetchRestreamChannels, 30000); // Poll every 30 seconds
+                // ✅ เปลี่ยนค่า Interval จาก 30000 (30 วินาที)
+                //    เป็น 300000 (5 นาที) หรือ 600000 (10 นาที)
+            intervalId = window.setInterval(fetchRestreamChannels, 300000); // Poll every 5 minutes (300,000 ms)
+
         };
 
         initiateFetchAndInterval();
@@ -964,6 +1037,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
                                 onStopStream={handleStopStream}
                                 onCheckSettings={handleCheckStreamSettings}
                                 isObsConnected={appState.obsStatus === 'connected'}
+                                onOpenStreamDetails={handleOpenStreamDetails}
                             />
                         </div>
 
@@ -1013,6 +1087,12 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
             {modal.type === 'confirm' && <ConfirmModal {...modal.props} onClose={() => setModal({ type: null })} />}
             {modal.type === 'product' && <ProductModal {...modal.props} onClose={() => setModal({ type: null })} />}
             {modal.type === 'settings' && <SettingsModal {...modal.props} obs={obs.current} isConnected={appState.obsStatus === 'connected'} onClose={() => setModal({ type: null })} onAlert={(props) => setModal({type: 'alert', props})} handleConnectRestream={handleConnectRestream} />}
+            {modal.type === 'streamDetails' && ( // ✅ เพิ่ม StreamDetailsModal ตรงนี้
+                <StreamDetailsModal
+                    onClose={() => setModal({ type: null })}
+                    onSave={handleUpdateStreamDetails}
+                />
+            )}
             {sceneModal.type === 'add' && <AddSceneModal onAdd={handleAddScene} onClose={() => setSceneModal({ type: null })} />}
 
         </div>
@@ -1118,6 +1198,7 @@ const StreamPanel: FC<{
     onStopStream: () => void;
     onCheckSettings: () => void;
     isObsConnected: boolean;
+    onOpenStreamDetails: () => void;
 }> = (props) => {
     const {
         isStreaming,
@@ -1129,6 +1210,7 @@ const StreamPanel: FC<{
         onStopStream,
         onCheckSettings,
         isObsConnected,
+        onOpenStreamDetails,
     } = props;
 
     return (
@@ -1153,6 +1235,7 @@ const StreamPanel: FC<{
                 <button onClick={onStartStream} disabled={!isObsConnected || isStreaming} className="control-btn bg-green-600 hover:bg-green-700 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaPlay className="mr-2" />เริ่มไลฟ์</button>
                 <button onClick={onStopStream} disabled={!isObsConnected || !isStreaming} className="control-btn bg-red-600 hover:bg-red-700 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaStop className="mr-2" />หยุดไลฟ์</button>
                 <button onClick={onCheckSettings} disabled={!isObsConnected} className="control-btn bg-yellow-500 hover:bg-yellow-600 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaCheckDouble className="mr-2" />ตรวจสอบค่า</button>
+                <button onClick={onOpenStreamDetails} className="control-btn bg-blue-600 hover:bg-blue-700 rounded-lg text-white px-4 flex items-center justify-center">แก้ไข Stream Details</button>
             </div>
         </>
     );
@@ -1173,7 +1256,7 @@ const RightPanel: FC<{
     onUpdateRunningText: (text: string) => void;
     onUpdateStreamTitle: (title: string) => void;
     onOpenPlatformSettings: (platform: string) => void;
-    onSetModal: React.Dispatch<React.SetStateAction<{ type: 'alert' | 'confirm' | 'product' | 'settings' | null; props?: any }>>;
+    onSetModal: React.Dispatch<React.SetStateAction<{ type: 'alert' | 'confirm' | 'product' | 'settings' | 'streamDetails' | null; props?: any }>>;
     restreamChannels: RestreamChannel[];
     onFetchRestreamChannels: () => void;
     onToggleRestreamChannel: (channelId: number, currentEnabledState: boolean) => void;
@@ -1418,7 +1501,7 @@ const SettingsTab: FC<{
     onUpdateRunningText: (text: string) => void;
     onUpdateStreamTitle: (title: string) => void;
     onOpenPlatformSettings: (platform: string) => void;
-    onSetModal: React.Dispatch<React.SetStateAction<{ type: 'alert' | 'confirm' | 'product' | 'settings' | null; props?: any }>>;
+    onSetModal: React.Dispatch<React.SetStateAction<{ type: 'alert' | 'confirm' | 'product' | 'settings' | 'streamDetails' | null; props?: any }>>;
     onFetchRestreamChannels: () => void; // ถ้า SettingsTab ต้องใช้
     handleConnectRestream: () => void; // ✅ รับ handleConnectRestream
     platform: string;
