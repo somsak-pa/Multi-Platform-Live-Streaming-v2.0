@@ -1108,6 +1108,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
                                 chatToken={chatToken}
                                 handleConnectRestream={handleConnectRestream}
                                 platform={appState.activeRightTab}
+                                onOpenStreamDetails={handleOpenStreamDetails}
                             />
                         </div>
                     </div>
@@ -1312,8 +1313,9 @@ const RightPanel: FC<{
     chatToken: string | null; // ✅ รับ chatToken Prop
     handleConnectRestream: () => void;
     platform: string;
+    onOpenStreamDetails: () => void;
 }> = (props) => {
-    const { activeTab, setActiveTab, onSetModal, onSendComment, restreamChannels, onFetchRestreamChannels, onToggleRestreamChannel, chatToken, comments } = props; // ✅ รับ comments
+    const { activeTab, setActiveTab, onSetModal, onSendComment, restreamChannels, onFetchRestreamChannels, onToggleRestreamChannel, chatToken, comments,onOpenStreamDetails  } = props; // ✅ รับ comments
     const tabs = [
         { id: 'comments', name: 'คอมเมนต์', icon: <FaComments /> },
         { id: 'channels', name: 'ช่องสตรีม', icon: <FaGlobe /> }, // ✅ Icon FaGlobe
@@ -1337,6 +1339,7 @@ const RightPanel: FC<{
                     restreamChannels={restreamChannels}
                     onFetchRestreamChannels={onFetchRestreamChannels}
                     onToggleChannelEnabled={onToggleRestreamChannel}
+                    onOpenStreamDetails={onOpenStreamDetails}
                 />
             )}
                 {activeTab === 'settings' && <SettingsTab {...props} onSetModal={onSetModal} />}
@@ -1419,8 +1422,9 @@ interface ChannelsTabProps {
     restreamChannels: RestreamChannel[];
     onFetchRestreamChannels: () => void;
     onToggleChannelEnabled: (channelId: number, currentEnabledState: boolean) => void;
+    onOpenStreamDetails: () => void;
 }
-const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamChannels, onToggleChannelEnabled }) => {
+const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamChannels, onToggleChannelEnabled, onOpenStreamDetails }) => { // ✅ เพิ่ม onOpenStreamDetails ตรงนี้
         // ✅ เพิ่ม State ใหม่สำหรับ Loading
     const [isToggling, setIsToggling] = useState<number | null>(null); // เก็บ channelId ที่กำลัง toggling
 
@@ -1464,7 +1468,9 @@ const ChannelsTab: FC<ChannelsTabProps> = ({ restreamChannels, onFetchRestreamCh
                 <button className="flex-1 py-2 px-4 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 font-semibold flex items-center justify-center text-sm">
                     <FaPlus className="mr-2" /> Add Channel
                 </button>
-                <button className="flex-1 py-2 px-4 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 font-semibold flex items-center justify-center text-sm">
+                <button
+                    onClick={onOpenStreamDetails} // ✅ เพิ่ม onClick event handler ตรงนี้
+                    className="flex-1 py-2 px-4 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 font-semibold flex items-center justify-center text-sm">
                     <FaPencil className="mr-2" /> Update Titles
                 </button>
             </div>
