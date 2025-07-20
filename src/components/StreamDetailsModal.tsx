@@ -1,42 +1,48 @@
 // src/components/StreamDetailsModal.tsx
-import React, { FC, useState, useRef, useEffect } from 'react';
+import React, { FC, useState, useRef, useEffect } from 'react'; // ✅ ต้อง import useRef และ useEffect
 import { FaUpload } from 'react-icons/fa6'; // เก็บ FaUpload ไว้ใน fa6
 import { FaTimes } from 'react-icons/fa'; // ✅ Import FaTimes จาก react-icons/fa (หรือ FaXmark จาก fa6)
 
+// ====================================================================
+// Type Definition for StreamDetailsModalProps
+// ====================================================================
 interface StreamDetailsModalProps {
     onClose: () => void;
     onSave: (channelId: string, title: string, description: string) => Promise<boolean>;
-    currentTitle: string;
-    currentDescription: string;
-    primaryChannelId: string | null; // ✅ ทำให้เป็น string | null ตาม App.tsx
+    currentTitle: string;        // ✅ Prop ที่ App.tsx ส่งมา
+    currentDescription: string;  // ✅ Prop ที่ App.tsx ส่งมา
+    primaryChannelId: string | null;    // ✅ Prop ที่ App.tsx ส่งมา และเป็น string | null
 }
 
-// ✅ แก้ไขตรงนี้: เพิ่มการ Destructure props ที่ขาดหายไป
+// ====================================================================
+// StreamDetailsModal Component
+// ====================================================================
 const StreamDetailsModal: FC<StreamDetailsModalProps> = ({
     onClose,
     onSave,
-    currentTitle,       // ✅ เพิ่มตรงนี้
-    currentDescription, // ✅ เพิ่มตรงนี้
-    primaryChannelId    // ✅ เพิ่มตรงนี้
+    currentTitle,         // ✅ Destructure currentTitle จาก props
+    currentDescription,   // ✅ Destructure currentDescription จาก props
+    primaryChannelId      // ✅ Destructure primaryChannelId จาก props
 }) => {
-    // ✅ ใช้ currentTitle และ currentDescription ใน useState
+    // ✅ useState เพื่อเก็บค่าที่ผู้ใช้กรอก (ใช้ค่าเริ่มต้นจาก props)
     const [title, setTitle] = useState(currentTitle);
     const [description, setDescription] = useState(currentDescription);
-    const [isSaving, setIsSaving] = useState(false);
-    const thumbnailInputRef = useRef<HTMLInputElement>(null);
+    const [isSaving, setIsSaving] = useState(false); // สำหรับ Loading State
+    const thumbnailInputRef = useRef<HTMLInputElement>(null); // สำหรับ upload
 
-    // ✅ useEffect สำหรับ Sync local state with props
+    // ✅ useEffect สำหรับ Sync local state กับ props
+    //    เมื่อ currentTitle หรือ currentDescription ที่ส่งมาเปลี่ยน, จะอัปเดต state ภายใน Modal
     useEffect(() => {
         setTitle(currentTitle);
         setDescription(currentDescription);
     }, [currentTitle, currentDescription]);
     
-    // ✅ ฟังก์ชันสำหรับบันทึก
+    // ✅ ฟังก์ชันสำหรับบันทึก (เรียกใช้ onSave Prop)
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSaving(true);
-        
-        // ✅ ตรวจสอบ primaryChannelId อีกครั้งก่อนส่งให้ onSave
+        e.preventDefault(); // ป้องกันการ reload หน้า
+        setIsSaving(true); // ตั้งค่าสถานะกำลังบันทึก
+
+        // ✅ ตรวจสอบ primaryChannelId อีกครั้ง (ไม่ควรเป็น null ถ้า Logic ใน App.tsx ถูกต้อง)
         if (!primaryChannelId) {
             alert('ไม่พบ Channel ID หลัก. ไม่สามารถอัปเดตได้.');
             setIsSaving(false);
@@ -45,17 +51,19 @@ const StreamDetailsModal: FC<StreamDetailsModalProps> = ({
         }
 
         try {
+            // เรียก onSave Prop ที่ส่งมาจาก App.tsx
             const success = await onSave(primaryChannelId, title, description);
             if (success) {
                 onClose(); // ปิด modal เมื่อบันทึกสำเร็จ
             }
         } finally {
-            setIsSaving(false); // ไม่ว่าสำเร็จหรือล้มเหลว ให้เคลียร์สถานะ Loading
+            setIsSaving(false); // ไม่ว่าสำเร็จหรือไม่ ให้หยุดสถานะ Loading
         }
     };
 
+    // ✅ ฟังก์ชันสำหรับอัปโหลด Thumbnail (ยังไม่ทำงานจริง)
     const handleThumbnailUploadClick = () => {
-        thumbnailInputRef.current?.click();
+        thumbnailInputRef.current?.click(); // คลิก input file ที่ซ่อนอยู่
     };
 
     const handleThumbnailFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -63,15 +71,22 @@ const StreamDetailsModal: FC<StreamDetailsModalProps> = ({
         if (file) {
             console.log("Selected thumbnail file:", file.name);
             alert("ฟังก์ชันอัปโหลด Thumbnail ยังไม่เปิดใช้งาน."); // แจ้งผู้ใช้
+            // Logic สำหรับการอัปโหลดไฟล์จริงไป Backend จะอยู่ตรงนี้
         }
     };
 
+    // ====================================================================
+    // JSX (UI ของ Modal)
+    // ====================================================================
     return (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
             <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg m-4">
                 <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
                     <h3 className="font-bold text-xl">Stream details</h3>
-                    <button onClick={onClose} className="text-gray-400 text-2xl"><FaTimes /></button> {/* ✅ ใช้ FaTimes Icon */}
+                    {/* ✅ ปุ่มปิด Modal - ใช้ FaTimes Icon */}
+                    <button onClick={onClose} className="text-gray-400 text-2xl">
+                        <FaTimes /> {/* หรือ <FaXmark /> ถ้าใช้จาก react-icons/fa6 */}
+                    </button>
                 </div>
                 <p className="px-4 pt-2 text-sm text-gray-500 dark:text-gray-400">
                     All channels in this setup will be updated.
