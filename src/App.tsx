@@ -1042,8 +1042,10 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
 
     return (
         <div className={`bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300 min-h-screen font-sans`}>
-            <div className="container mx-auto p-4 lg:p-6 flex flex-col h-screen">
-                <header className="text-center mb-6 relative">
+            {/* ✅ แก้ไข container หลัก: ลบ p-4 lg:p-6 และ container mx-auto ออกเพื่อให้ชิดขอบจอ */}
+            <div className="flex flex-col h-screen">
+                <header className="text-center mb-6 relative pt-4 lg:pt-6 px-4 lg:px-6">
+                    {/* ... โค้ดส่วน header เหมือนเดิม ... */}
                     <div className="flex items-center justify-center gap-x-4">
                         <h1 className="text-3xl lg:text-xl font-bold text-gray-900 dark:text-white">🔴 Multi-Platform Live Streaming</h1>
                         <div onClick={() => dispatch({ type: 'SET_STATE', payload: { activeRightTab: 'settings' } })} className="flex items-center justify-center gap-2 text-xl font-semibold px-2 py-1 rounded-lg bg-gray-200 dark:bg-gray-700 cursor-pointer">
@@ -1051,69 +1053,82 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
                             <span>{currentObsStatus.text}</span>
                         </div>
                     </div>
-                    <button onClick={() => setIsDarkMode(prev => !prev)} className="absolute top-0 right-0 p-3 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none">
+                    <button onClick={() => setIsDarkMode(prev => !prev)} className="absolute top-0 right-0 mt-4 mr-4 p-3 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none">
                         {isDarkMode ? <FaSun className="text-xl" /> : <FaMoon className="text-xl" />}
                     </button>
                 </header>
 
-                <main className="flex-grow grid grid-cols-12 grid-rows-[1fr_auto] gap-6 min-h-0">
+                {/* ========================================================== */}
+                {/* ✅ โค้ด <main> ที่ปรับความสูงกล้องในแนวตั้ง */}
+                {/* ========================================================== */}
+                <main className="flex-1 grid grid-cols-12 grid-rows-[1fr_auto] portrait:grid-rows-[2fr_1fr_auto] gap-6 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6">
 
-                    <div className="col-span-12 row-span-1 grid grid-cols-12 gap-6 min-h-0">
-                        <div className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-2xl p-4 flex flex-col shadow-lg overflow-hidden">
-                            <ProductPanel
-                                products={appState.products}
-                                selectedProductId={appState.selectedProductId}
-                                onSelectProduct={(id) => dispatch({ type: 'SET_STATE', payload: { selectedProductId: id } })}
-                                onAddProduct={() => setModal({ type: 'product', props: { onSave: handleSaveProduct } })}
-                                onEditProduct={(product) => setModal({ type: 'product', props: { product, onSave: handleSaveProduct } })}
-                                onDeleteProduct={handleDeleteProduct}
-                                onShowProduct={handleShowProduct}
-                            />
-                        </div>
-
-                        <div className="lg:col-span-6 bg-white dark:bg-gray-800 rounded-2xl p-4 flex flex-col shadow-lg overflow-hidden">
-                           <StreamPanel
-                                isStreaming={appState.isStreaming}
-                                streamTime={appState.streamTime}
-                                runningText={appState.runningText}
-                                overlayProduct={appState.overlayProduct}
-                                videoRef={videoRef}
-                                onStartStream={handleStartStream}
-                                onStopStream={handleStopStream}
-                                onCheckSettings={handleCheckStreamSettings}
-                                isObsConnected={appState.obsStatus === 'connected'}
-                                onOpenStreamDetails={handleOpenStreamDetails}
-                            />
-                        </div>
-
-                        <div className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-2xl p-4 flex flex-col shadow-lg overflow-hidden">
-                           <RightPanel
-                                activeTab={appState.activeRightTab}
-                                setActiveTab={(tab) => dispatch({ type: 'SET_STATE', payload: { activeRightTab: tab } })}
-                                obsStatus={appState.obsStatus}
-                                comments={appState.comments}
-                                analytics={appState.analytics}
-                                runningText={appState.runningText}
-                                streamTitle={appState.streamTitle}
-                                onConnectOBS={handleConnectOBS}
-                                onDisconnectOBS={handleDisconnectOBS}
-                                onSendComment={handleSendComment}
-                                onUpdateRunningText={(text) => dispatch({ type: 'SET_STATE', payload: { runningText: text } })}
-                                onUpdateStreamTitle={(title) => dispatch({ type: 'SET_STATE', payload: { streamTitle: title } })}
-                                onOpenPlatformSettings={(platform) => setModal({type: 'settings', props: { platform }})}
-                                onSetModal={setModal}
-                                restreamChannels={appState.restreamChannels}
-                                onFetchRestreamChannels={fetchRestreamChannels}
-                                onToggleRestreamChannel={handleToggleRestreamChannel}
-                                chatToken={chatToken}
-                                handleConnectRestream={handleConnectRestream}
-                                platform={appState.activeRightTab}
-                                onOpenStreamDetails={handleOpenStreamDetails}
-                            />
-                        </div>
+                    {/* --- ProductPanel (จัดการสินค้า) --- */}
+                    {/* Landscape: อยู่คอลัมน์ซ้ายสุด */}
+                    {/* Portrait:  อยู่แถวที่ 2, คอลัมน์ที่ 1-8 */}
+                    <div className="col-span-3 row-span-1 portrait:col-span-8 portrait:row-start-2 bg-white dark:bg-gray-800 rounded-2xl p-4 flex flex-col shadow-lg overflow-hidden">
+                        <ProductPanel
+                            products={appState.products}
+                            selectedProductId={appState.selectedProductId}
+                            onSelectProduct={(id) => dispatch({ type: 'SET_STATE', payload: { selectedProductId: id } })}
+                            onAddProduct={() => setModal({ type: 'product', props: { onSave: handleSaveProduct } })}
+                            onEditProduct={(product) => setModal({ type: 'product', props: { product, onSave: handleSaveProduct } })}
+                            onDeleteProduct={handleDeleteProduct}
+                            onShowProduct={handleShowProduct}
+                        />
                     </div>
 
-                    <div className="col-span-12">
+                    {/* --- StreamPanel (กล้อง) --- */}
+                    {/* Landscape: อยู่ตรงกลาง */}
+                    {/* Portrait:  อยู่แถวที่ 1, คอลัมน์ที่ 1-8 */}
+                    <div className="col-start-4 col-span-6 row-span-1 portrait:col-start-1 portrait:col-span-8 portrait:row-start-1 bg-white dark:bg-gray-800 rounded-2xl p-4 flex flex-col shadow-lg overflow-hidden">
+                        <StreamPanel
+                            isStreaming={appState.isStreaming}
+                            streamTime={appState.streamTime}
+                            runningText={appState.runningText}
+                            overlayProduct={appState.overlayProduct}
+                            videoRef={videoRef}
+                            onStartStream={handleStartStream}
+                            onStopStream={handleStopStream}
+                            onCheckSettings={handleCheckStreamSettings}
+                            isObsConnected={appState.obsStatus === 'connected'}
+                            onOpenStreamDetails={handleOpenStreamDetails}
+                        />
+                    </div>
+
+                    {/* --- RightPanel (คอมเมนต์) --- */}
+                    {/* Landscape: อยู่คอลัมน์ขวาสุด */}
+                    {/* Portrait:  อยู่คอลัมน์ที่ 9-12 และกินความสูงทั้ง 3 แถว */}
+                    <div className="col-start-10 col-span-3 row-span-1 portrait:col-start-9 portrait:col-span-4 portrait:row-span-3 bg-white dark:bg-gray-800 rounded-2xl p-4 flex flex-col shadow-lg overflow-hidden">
+                        <RightPanel
+                            activeTab={appState.activeRightTab}
+                            setActiveTab={(tab) => dispatch({ type: 'SET_STATE', payload: { activeRightTab: tab } })}
+                            obsStatus={appState.obsStatus}
+                            comments={appState.comments}
+                            analytics={appState.analytics}
+                            runningText={appState.runningText}
+                            streamTitle={appState.streamTitle}
+                            onConnectOBS={handleConnectOBS}
+                            onDisconnectOBS={handleDisconnectOBS}
+                            onSendComment={handleSendComment}
+                            onUpdateRunningText={(text) => dispatch({ type: 'SET_STATE', payload: { runningText: text } })}
+                            onUpdateStreamTitle={(title) => dispatch({ type: 'SET_STATE', payload: { streamTitle: title } })}
+                            onOpenPlatformSettings={(platform) => setModal({type: 'settings', props: { platform }})}
+                            onSetModal={setModal}
+                            restreamChannels={appState.restreamChannels}
+                            onFetchRestreamChannels={fetchRestreamChannels}
+                            onToggleRestreamChannel={handleToggleRestreamChannel}
+                            chatToken={chatToken}
+                            handleConnectRestream={handleConnectRestream}
+                            platform={appState.activeRightTab}
+                            onOpenStreamDetails={handleOpenStreamDetails}
+                        />
+                    </div>
+
+                    {/* --- ObsManagementPanel --- */}
+                    {/* Landscape: อยู่แถวล่างสุด และกินพื้นที่เต็ม */}
+                    {/* Portrait:  อยู่แถวที่ 3 (ใต้ ProductPanel) */}
+                    <div className="col-span-12 row-start-2 portrait:col-span-8 portrait:row-start-3 bg-white dark:bg-gray-800 rounded-2xl p-4 flex flex-col shadow-lg overflow-hidden">
                         <ObsManagementPanel
                             scenes={appState.scenes}
                             currentSceneName={appState.currentSceneName}
@@ -1127,24 +1142,24 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
                         />
                     </div>
                 </main>
+
+                {/* ... โค้ดส่วน Modal และ Component อื่นๆ ที่อยู่ล่างสุดของไฟล์ App.tsx ... */}
+                {modal.type === 'alert' && <AlertModal {...modal.props} onClose={() => setModal({ type: null })} />}
+                {modal.type === 'confirm' && <ConfirmModal {...modal.props} onClose={() => setModal({ type: null })} />}
+                {modal.type === 'product' && <ProductModal {...modal.props} onClose={() => setModal({ type: null })} />}
+                {modal.type === 'settings' && <SettingsModal {...modal.props} obs={obs.current} isConnected={appState.obsStatus === 'connected'} onClose={() => setModal({ type: null })} onAlert={(props) => setModal({type: 'alert', props})} handleConnectRestream={handleConnectRestream} />}
+                {streamDetailsModal && streamDetailsModal.isOpen && (
+                    <StreamDetailsModal
+                        onClose={() => setStreamDetailsModal(null)}
+                        onSave={handleUpdateStreamDetails}
+                        currentTitle={streamDetailsModal.currentTitle}
+                        currentDescription={streamDetailsModal.currentDescription}
+                        primaryChannelId={streamDetailsModal.primaryChannelId}
+                    />
+                )}
+                {sceneModal.type === 'add' && <AddSceneModal onAdd={handleAddScene} onClose={() => setSceneModal({ type: null })} />}
+
             </div>
-
-            {modal.type === 'alert' && <AlertModal {...modal.props} onClose={() => setModal({ type: null })} />}
-            {modal.type === 'confirm' && <ConfirmModal {...modal.props} onClose={() => setModal({ type: null })} />}
-            {modal.type === 'product' && <ProductModal {...modal.props} onClose={() => setModal({ type: null })} />}
-            {modal.type === 'settings' && <SettingsModal {...modal.props} obs={obs.current} isConnected={appState.obsStatus === 'connected'} onClose={() => setModal({ type: null })} onAlert={(props) => setModal({type: 'alert', props})} handleConnectRestream={handleConnectRestream} />}
-            {streamDetailsModal && streamDetailsModal.isOpen && (
-                <StreamDetailsModal
-                    onClose={() => setStreamDetailsModal(null)} // ✅ ปิด Modal โดยตั้งค่า streamDetailsModal เป็น null
-                    onSave={handleUpdateStreamDetails}
-                    // ✅ ส่งข้อมูลที่เก็บใน streamDetailsModal state ไปเป็น Props
-                    currentTitle={streamDetailsModal.currentTitle}
-                    currentDescription={streamDetailsModal.currentDescription}
-                    primaryChannelId={streamDetailsModal.primaryChannelId}
-                />
-            )}
-            {sceneModal.type === 'add' && <AddSceneModal onAdd={handleAddScene} onClose={() => setSceneModal({ type: null })} />}
-
         </div>
     );
 };
