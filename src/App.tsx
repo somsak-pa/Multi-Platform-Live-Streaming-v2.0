@@ -1,33 +1,29 @@
 import React, { useState, useEffect, useRef, useCallback, FC, useReducer } from 'react';
 import StreamDetailsModal from './components/StreamDetailsModal';
-// ใน src/App.tsx, บรรทัดแรกๆ ของไฟล์
 import useLocalStorage from './hooks/useLocalStorage';
 import { ObsManagementPanel } from './components/ObsManagementPanel';
 import {
     FaFacebookF, FaYoutube, FaTiktok, FaInstagram, FaBoxOpen, FaPlus, FaEye,
     FaPlay, FaStop, FaCheckDouble, FaComments, FaGear, FaPaperPlane, FaPencil,
     FaTrash, FaSun, FaMoon, FaChevronDown, FaKey, FaSatelliteDish, FaCircleCheck, FaCircleXmark,
-    FaCircleInfo, FaCircleQuestion, FaEyeSlash, FaMicrophone, FaShopware,
-    FaGlobe,FaUsers,FaTwitch
+    FaCircleInfo, FaCircleQuestion, FaEyeSlash, FaMicrophone,
+    FaGlobe, FaUsers, FaTwitch
 } from 'react-icons/fa6';
 import OBSWebSocket from 'obs-websocket-js';
 import { SiShopee } from 'react-icons/si';
-// ====================================================================
+
+// ใช้ invoke จาก Tauri API
+//import { invoke } from "@tauri-apps/api/tauri";
+
 // Type Definitions - นำเข้าจาก src/types.ts
-// ====================================================================
 import {
     Product, Comment, OBSScene, OBSSource, OBSAudioInput, AppState, Action, RestreamChannel
 } from './types';
 
-// ====================================================================
 // Environment Variables
-// ====================================================================
 const BACKEND_API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL;
-//const RESTREAM_API_BASE_URL = import.meta.env.RESTREAM_API_BASE_URL;
-// ====================================================================
-// State Management with useReducer
-// ====================================================================
 
+// State Management with useReducer
 const initialState: AppState = {
     obsStatus: 'disconnected',
     isStreaming: false,
@@ -108,8 +104,8 @@ function appReducer(state: AppState, action: Action): AppState {
                 ...state,
                 restreamChannels: state.restreamChannels.map(channel =>
                     channel.id === action.payload.channelId
-                        ? { ...channel, enabled: action.payload.enabled, status: action.payload.enabled ? 'online' : 'offline' }
-                        : channel
+                    ? { ...channel, enabled: action.payload.enabled, status: action.payload.enabled ? 'online' : 'offline' }
+                    : channel
                 ),
             };
         default:
@@ -117,9 +113,7 @@ function appReducer(state: AppState, action: Action): AppState {
     }
 }
 
-// ====================================================================
 // Main App Component
-// ====================================================================
 const App: FC = () => {
 
     const obs = useRef(new OBSWebSocket());
@@ -154,7 +148,6 @@ const App: FC = () => {
         streamTimerRef.current = null;
         dispatch({ type: 'UPDATE_TIMER', payload: '00:00:00' });
     }, [dispatch]);
-    // ✅ ฟังก์ชันใหม่สำหรับดึง Chat Token จาก Backend
 
     const refreshAccessToken = useCallback(async (currentRefreshToken: string) => {
     try {
@@ -167,7 +160,6 @@ const App: FC = () => {
         if (!response.ok) {
             const errorData = await response.json();
             console.error('Error refreshing token:', response.status, errorData);
-            // ถ้า refresh token หมดอายุหรือใช้ไม่ได้ ให้แจ้งเตือนและลบ token ออกทั้งหมด
             if (response.status === 400 || response.status === 401) {
                 setModal({ type: 'alert', props: { message: 'Session หมดอายุ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
                 localStorage.removeItem('restream-access-token');
@@ -180,14 +172,13 @@ const App: FC = () => {
 
         const data = await response.json();
         console.log('Successfully refreshed tokens:', data);
-        // บันทึก access_token และ refresh_token ใหม่
         localStorage.setItem('restream-access-token', data.access_token);
         if (data.refresh_token) {
             localStorage.setItem('restream-refresh-token', data.refresh_token);
             setRestreamRefreshToken(data.refresh_token);
         }
         setRestreamAccessToken(data.access_token);
-        return data.access_token; // คืน access_token ใหม่
+        return data.access_token;
     } catch (error) {
         console.error('Failed to refresh access token:', error);
         setModal({ type: 'alert', props: { message: 'ไม่สามารถ Refresh Token ได้ กรุณาเชื่อมต่อ Restream ใหม่', alertType: 'error' } });
@@ -530,31 +521,31 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
 
             const audioInputsRaw: Omit<OBSAudioInput, 'inputLevels'>[] = await Promise.all(
                 allInputListData.inputs
-                    .filter((input: any) =>
-                        input.inputKind.includes('wasapi') ||
-                        input.inputKind.includes('coreaudio') ||
-                        input.inputKind.includes('pulse') ||
-                        input.inputKind.includes('mic')
-                    )
-                    .map(async (input: any) => {
-                        try {
-                            const { inputMuted } = await obs.current.call('GetInputMute', { inputName: input.inputName });
-                            const { inputVolumeDb } = await obs.current.call('GetInputVolume', { inputName: input.inputName });
+                .filter((input: any) =>
+                    input.inputKind.includes('wasapi') ||
+                    input.inputKind.includes('coreaudio') ||
+                    input.inputKind.includes('pulse') ||
+                    input.inputKind.includes('mic')
+                )
+                .map(async (input: any) => {
+                    try {
+                        const { inputMuted } = await obs.current.call('GetInputMute', { inputName: input.inputName });
+                        const { inputVolumeDb } = await obs.current.call('GetInputVolume', { inputName: input.inputName });
 
-                            return {
-                                inputName: String(input.inputName),
-                                inputMuted: Boolean(inputMuted),
-                                inputVolumeDb: Number(inputVolumeDb) || -100,
-                            };
-                        } catch (e) {
-                            console.error(`Error fetching data for audio input ${input.inputName}:`, e);
-                            return {
-                                inputName: String(input.inputName),
-                                inputMuted: false,
-                                inputVolumeDb: -100,
-                            };
-                        }
-                    })
+                        return {
+                            inputName: String(input.inputName),
+                            inputMuted: Boolean(inputMuted),
+                            inputVolumeDb: Number(inputVolumeDb) || -100,
+                        };
+                    } catch (e) {
+                        console.error(`Error fetching data for audio input ${input.inputName}:`, e);
+                        return {
+                            inputName: String(input.inputName),
+                            inputMuted: false,
+                            inputVolumeDb: -100,
+                        };
+                    }
+                })
             );
             const scenes: OBSScene[] = sceneListData.scenes.map((scene: any) => ({
                 sceneName: String(scene.sceneName)
@@ -686,21 +677,21 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
 
         if (authStatus) {
             if (authStatus === 'success' && accessToken) {
-                        setRestreamAccessToken(accessToken);
-                        if (refreshToken) {
-                            localStorage.setItem('restream-refresh-token', refreshToken);
-                            setRestreamRefreshToken(refreshToken);
-                        }
-                        fetchChatToken(accessToken);
-                        fetchRestreamChannels(accessToken);
-                        setModal({ type: 'alert', props: { message: 'เชื่อมต่อ Restream สำเร็จแล้ว!', alertType: 'success' } });
+                setRestreamAccessToken(accessToken);
+                if (refreshToken) {
+                    localStorage.setItem('restream-refresh-token', refreshToken);
+                    setRestreamRefreshToken(refreshToken);
+                }
+                fetchChatToken(accessToken);
+                fetchRestreamChannels(accessToken);
+                setModal({ type: 'alert', props: { message: 'เชื่อมต่อ Restream สำเร็จแล้ว!', alertType: 'success' } });
 
-                        window.history.replaceState({}, document.title, window.location.pathname);
+                window.history.replaceState({}, document.title, window.location.pathname);
 
-                    } else if (authStatus === 'failed') {
-                        setModal({ type: 'alert', props: { message: `เชื่อมต่อ Restream ล้มเหลว: ${decodeURIComponent(message || 'ไม่ทราบสาเหตุ')}`, alertType: 'error' } });
-                        window.history.replaceState({}, document.title, window.location.pathname);
-                    }
+            } else if (authStatus === 'failed') {
+                setModal({ type: 'alert', props: { message: `เชื่อมต่อ Restream ล้มเหลว: ${decodeURIComponent(message || 'ไม่ทราบสาเหตุ')}`, alertType: 'error' } });
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
         }
     }, [setRestreamAccessToken, setModal, fetchChatToken, fetchRestreamChannels, setRestreamRefreshToken]);
 
@@ -809,114 +800,122 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
             console.error('Error disconnecting OBS:', e);
         }
     }, []);
-// ใน App.tsx, ภายใน const App: FC = () => { ... }
 
-// --- Multi-Output Stream Handlers ---
-const startSpecificMultiOutput = useCallback(async (targetName: string) => {
-    //console.log("DEBUG: obs.current status =", obs.current.status); // สถานะการเชื่อมต่อ (e.g., 'connected', 'disconnected')
-    console.log("DEBUG: obs.current identified =", obs.current.identified); // สถานะการยืนยันตัวตน (true/false)
+    // --- Multi-Output Stream Handlers ---
+    const startSpecificMultiOutput = useCallback(async (targetName: string) => {
+        console.log("DEBUG: obs.current identified =", obs.current.identified);
 
-    // สำคัญ: ต้องแน่ใจว่าทั้ง connected และ identified เป็น true
-    if (!obs.current.identified) { // <-- แก้ไขเงื่อนไขตรงนี้
-        setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อหรือยืนยันตัวตนกับ OBS โปรดเชื่อมต่อก่อน', alertType: 'error' } });
-        return;
-    }
+        if (!obs.current.identified) {
+            setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อหรือยืนยันตัวตนกับ OBS โปรดเชื่อมต่อก่อน', alertType: 'error' } });
+            return;
+        }
 
-    try {
-        // ... โค้ด CallVendorRequest เดิมของคุณ ...
-        console.log('targetName : ' + targetName)
-        await obs.current.call('CallVendorRequest', {
-            vendorName: "obs-multi-rtmp",
-            requestType: "start_output",
-            requestData: {
-                target_name: targetName
-            }
-        });
-        setModal({ type: 'alert', props: { message: `เริ่มสตรีม ${targetName} สำเร็จ!`, alertType: 'success' } });
-    } catch (error: any) {
-        console.error(`[MultiOutput] Failed to start output ${targetName}:`, error);
-        setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
-    }
-}, [appState.obsStatus, setModal, obs]);
+        try {
+            console.log('targetName : ' + targetName)
+            await obs.current.call('CallVendorRequest', {
+                vendorName: "obs-multi-rtmp",
+                requestType: "start_output",
+                requestData: {
+                    target_name: targetName
+                }
+            });
+            setModal({ type: 'alert', props: { message: `เริ่มสตรีม ${targetName} สำเร็จ!`, alertType: 'success' } });
+        } catch (error: any) {
+            console.error(`[MultiOutput] Failed to start output ${targetName}:`, error);
+            setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
+        }
+    }, [appState.obsStatus, setModal, obs]);
 
-const stopSpecificMultiOutput = useCallback(async (targetName: string) => {
-    if (appState.obsStatus !== 'connected') {
-        setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
-        return;
-    }
-    try {
-        console.log(`[MultiOutput] Attempting to stop output: ${targetName}`);
-        await obs.current.call('CallVendorRequest', {
-            vendorName: "obs-multi-rtmp",
-            requestType: "stop_output",
-            requestData: {
-                target_name: targetName
-            }
-        });
-        setModal({ type: 'alert', props: { message: `หยุดสตรีม ${targetName} สำเร็จ!`, alertType: 'success' } });
-    } catch (error: any) {
-        console.error(`[MultiOutput] Failed to stop output ${targetName}:`, error);
-        setModal({ type: 'alert', props: { message: `ไม่สามารถหยุดสตรีม ${targetName} ได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
-    }
-}, [appState.obsStatus, setModal, obs]);
-
-const startAllMultiOutputs = useCallback(async () => {
-    if (appState.obsStatus !== 'connected') {
-        setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
-        return;
-    }
-    try {
-        console.log("[MultiOutput] Attempting to start all outputs.");
-        await obs.current.call('CallVendorRequest', {
-            vendorName: "obs-multi-rtmp",
-            requestType: "start_all_outputs"
-        });
-        setModal({ type: 'alert', props: { message: 'เริ่มสตรีมทั้งหมดสำเร็จ!', alertType: 'success' } });
-    } catch (error: any) {
-        console.error("[MultiOutput] Failed to start all outputs:", error);
-        setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีมทั้งหมดได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
-    }
-}, [appState.obsStatus, setModal, obs]);
-
-const stopAllMultiOutputs = useCallback(async () => {
-    if (appState.obsStatus !== 'connected') {
-        setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
-        return;
-    }
-    try {
-        console.log("[MultiOutput] Attempting to stop all outputs.");
-        await obs.current.call('CallVendorRequest', {
-            vendorName: "obs-multi-rtmp",
-            requestType: "stop_all_outputs"
-        });
-        setModal({ type: 'alert', props: { message: 'หยุดสตรีมทั้งหมดสำเร็จ!', alertType: 'success' } });
-    } catch (error: any) {
-        console.error("[MultiOutput] Failed to stop all outputs:", error);
-        setModal({ type: 'alert', props: { message: `ไม่สามารถหยุดสตรีมทั้งหมดได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
-    }
-}, [appState.obsStatus, setModal, obs]);
-
-
-    const handleStartStream = async () => {
+    const stopSpecificMultiOutput = useCallback(async (targetName: string) => {
         if (appState.obsStatus !== 'connected') {
             setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
             return;
         }
-        if (appState.isStreaming) {
-            setModal({ type: 'alert', props: { message: 'กำลังสตรีมอยู่แล้ว', alertType: 'info' } });
+        try {
+            console.log(`[MultiOutput] Attempting to stop output: ${targetName}`);
+            await obs.current.call('CallVendorRequest', {
+                vendorName: "obs-multi-rtmp",
+                requestType: "stop_output",
+                requestData: {
+                    target_name: targetName
+                }
+            });
+            setModal({ type: 'alert', props: { message: `หยุดสตรีม ${targetName} สำเร็จ!`, alertType: 'success' } });
+        } catch (error: any) {
+            console.error(`[MultiOutput] Failed to stop output ${targetName}:`, error);
+            setModal({ type: 'alert', props: { message: `ไม่สามารถหยุดสตรีม ${targetName} ได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
+        }
+    }, [appState.obsStatus, setModal, obs]);
+
+    const startAllMultiOutputs = useCallback(async () => {
+        if (appState.obsStatus !== 'connected') {
+            setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
             return;
         }
         try {
-            await obs.current.call('StartStream');
+            console.log("[MultiOutput] Attempting to start all outputs.");
+            await obs.current.call('CallVendorRequest', {
+                vendorName: "obs-multi-rtmp",
+                requestType: "start_all_outputs"
+            });
+            setModal({ type: 'alert', props: { message: 'เริ่มสตรีมทั้งหมดสำเร็จ!', alertType: 'success' } });
         } catch (error: any) {
-            console.error("❌ Failed to start stream:", error);
-            let errorMessage = error.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก';
-            if (error.code === 'NOT_CONFIGURED') {
-                errorMessage = 'ยังไม่ได้ตั้งค่า Stream Service ใน OBS. กรุณาตั้งค่า Server/Key ก่อน';
-            }
-            setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มไลฟ์ได้: ${errorMessage}`, alertType: 'error' } });
+            console.error("[MultiOutput] Failed to start all outputs:", error);
+            setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีมทั้งหมดได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
         }
-    };
+    }, [appState.obsStatus, setModal, obs]);
+
+    const stopAllMultiOutputs = useCallback(async () => {
+        if (appState.obsStatus !== 'connected') {
+            setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
+            return;
+        }
+        try {
+            console.log("[MultiOutput] Attempting to stop all outputs.");
+            await obs.current.call('CallVendorRequest', {
+                vendorName: "obs-multi-rtmp",
+                requestType: "stop_all_outputs"
+            });
+            setModal({ type: 'alert', props: { message: 'หยุดสตรีมทั้งหมดสำเร็จ!', alertType: 'success' } });
+        } catch (error: any) {
+            console.error("[MultiOutput] Failed to stop all outputs:", error);
+            setModal({ type: 'alert', props: { message: `ไม่สามารถหยุดสตรีมทั้งหมดได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
+        }
+    }, [appState.obsStatus, setModal, obs]);
+
+
+const handleStartStream = async () => {
+    if (appState.obsStatus !== 'connected') {
+        setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
+        return;
+    }
+    if (appState.isStreaming) {
+        setModal({ type: 'alert', props: { message: 'กำลังสตรีมอยู่แล้ว', alertType: 'info' } });
+        return;
+    }
+
+    try {
+        const streamConfig = {
+            twitchUrl: localStorage.getItem('twitch-key') ? 'rtmp://live-sjc.twitch.tv/app/' + localStorage.getItem('twitch-key') : '',
+            youtubeUrl: localStorage.getItem('youtube-key') ? 'rtmp://a.rtmp.youtube.com/live2/' + localStorage.getItem('youtube-key') : ''
+        };
+        
+        // นี่คือการเรียกใช้ Command ใน Back-End (Rust) ของ Tauri
+        // โดยเรียกใช้ Command ที่ชื่อว่า 'start_ffmpeg'
+        //await invoke('start_ffmpeg', { twitchUrl: streamConfig.twitchUrl, youtubeUrl: streamConfig.youtubeUrl });
+        
+        // สั่งให้ OBS เริ่มสตรีม หลังจากที่ Back-End (FFmpeg) พร้อมแล้ว
+        await obs.current.call('StartStream');
+
+    } catch (error: any) {
+        console.error("❌ Failed to start stream:", error);
+        let errorMessage = error.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก';
+        if (error.code === 'NOT_CONFIGURED') {
+            errorMessage = 'ยังไม่ได้ตั้งค่า Stream Service ใน OBS. กรุณาตั้งค่า Server/Key ก่อน';
+        }
+        setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มไลฟ์ได้: ${errorMessage}`, alertType: 'error' } });
+    }
+};
 
     const handleStopStream = useCallback(async () => {
         try {
@@ -1112,7 +1111,7 @@ const stopAllMultiOutputs = useCallback(async () => {
                         <StreamPanel
                             isStreaming={appState.isStreaming}
                             streamTime={appState.streamTime}
-                            //runningText={appState.runningText}
+                           // runningText={appState.runningText}
                             overlayProduct={appState.overlayProduct}
                             videoRef={videoRef}
                             onStartStream={handleStartStream}
@@ -1135,12 +1134,12 @@ const stopAllMultiOutputs = useCallback(async () => {
                             obsStatus={appState.obsStatus}
                             comments={appState.comments}
                             analytics={appState.analytics}
-                           // runningText={appState.runningText}
+                          //  runningText={appState.runningText}
                             streamTitle={appState.streamTitle}
                             onConnectOBS={handleConnectOBS}
                             onDisconnectOBS={handleDisconnectOBS}
                             onSendComment={handleSendComment}
-                           // onUpdateRunningText={(text) => dispatch({ type: 'SET_STATE', payload: { runningText: text } })}
+                          //  onUpdateRunningText={(text) => dispatch({ type: 'SET_STATE', payload: { runningText: text } })}
                             onUpdateStreamTitle={(title) => dispatch({ type: 'SET_STATE', payload: { streamTitle: title } })}
                             onOpenPlatformSettings={(platform) => setModal({type: 'settings', props: { platform }})}
                             onSetModal={setModal}
@@ -1441,7 +1440,7 @@ const {
                         streamTitle={streamTitle}
                         onConnectOBS={onConnectOBS}
                         onDisconnectOBS={onDisconnectOBS}
-                      //  onUpdateRunningText={onUpdateRunningText}
+                       // onUpdateRunningText={onUpdateRunningText}
                         onUpdateStreamTitle={onUpdateStreamTitle}
                         onOpenPlatformSettings={onOpenPlatformSettings}
                         onSetModal={onSetModal}
@@ -1609,11 +1608,11 @@ const getPlatformIcon = (platformName: string) => {
                                         {channel.privacy === 'public' && <span className="text-blue-500 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-800">Public</span>}
                                     </div>
                                     <div
-                                            className={`text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1 ${channel.status === 'online' ? 'cursor-pointer hover:underline' : 'cursor-not-allowed'}`}
-                                            onClick={() => handleViewLive(channel)}>
-                                            {getPlatformIcon(channel.platform)}
-                                            <span>ดูไลฟ์สด...</span>
-                                </div>
+                                             className={`text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1 ${channel.status === 'online' ? 'cursor-pointer hover:underline' : 'cursor-not-allowed'}`}
+                                             onClick={() => handleViewLive(channel)}>
+                                             {getPlatformIcon(channel.platform)}
+                                             <span>ดูไลฟ์สด...</span>
+                                     </div>
                                 </div>
                             </div>
 
@@ -1644,10 +1643,6 @@ const getPlatformIcon = (platformName: string) => {
     );
 };
 const DisplaySettings: FC<{streamTitle: string; onStreamTitleChange: (text: string) => void; onUpdate: () => void}> = ({ streamTitle,  onStreamTitleChange }) => {
-    // const [localRunningText, setLocalRunningText] = useState(runningText);
-    // useEffect(() => {
-    //     setLocalRunningText(runningText);
-    // }, [runningText]);
     return (
         <div className="bg-gray-100 dark:bg-gray-700/50 p-4 rounded-lg">
             <h3 className="font-semibold mb-3">ตั้งค่าการแสดงผล</h3>
@@ -1655,20 +1650,6 @@ const DisplaySettings: FC<{streamTitle: string; onStreamTitleChange: (text: stri
                 <label htmlFor="stream-title-input" className="block mb-2 font-semibold">ชื่อเรื่องไลฟ์</label>
                 <input type="text" id="stream-title-input" value={streamTitle} onChange={e => onStreamTitleChange(e.target.value)} placeholder="ใส่ชื่อเรื่องของไลฟ์สตรีม" className="w-full p-3 bg-white dark:bg-gray-800 rounded-lg border" />
             </div>
-            {/* <div className="mt-4">
-                <label htmlFor="running-text-input" className="block mb-2 font-semibold">ข้อความวิ่ง</label>
-                { <textarea
-                    id="running-text-input"
-                    value={localRunningText}
-                    onChange={e => {
-                        setLocalRunningText(e.target.value);
-                        onRunningTextChange(e.target.value);
-                    }}
-                    rows={2}
-                    className="w-full p-3 bg-white dark:bg-gray-800 rounded-lg border"
-                ></textarea> }
-                <button onClick={onUpdate} className="mt-2 w-full p-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">อัปเดตข้อความ</button>
-            </div> */}
         </div>
     );
 };
@@ -1715,40 +1696,40 @@ const {
 
     // Configuration for Multi-Output platforms
 const multiOutputPlatforms = [
-        { 
-            id: 'facebook', 
-            name: '', 
-            icon: <FaFacebookF className="text-blue-500" size={22} />, 
-            startBg: 'bg-facebookBlue hover:bg-facebookDarkBlue dark:bg-facebookBlueDark dark:hover:bg-facebookDarkBlueDark', 
-            stopBg: 'bg-facebookDarkBlue hover:bg-facebookBlue dark:bg-facebookDarkBlueDark dark:hover:bg-facebookBlueDark' 
+        {
+            id: 'facebook',
+            name: '',
+            icon: <FaFacebookF className="text-blue-500" size={22} />,
+            startBg: 'bg-facebookBlue hover:bg-facebookDarkBlue dark:bg-facebookBlueDark dark:hover:bg-facebookDarkBlueDark',
+            stopBg: 'bg-facebookDarkBlue hover:bg-facebookBlue dark:bg-facebookDarkBlueDark dark:hover:bg-facebookBlueDark'
         },
-        { 
-            id: 'youtube', 
-            name: '', 
-            icon: <FaYoutube className="text-red-500" size={22} />, 
-            startBg: 'bg-youtubeRed hover:bg-youtubeDarkRed dark:bg-youtubeRedDark dark:hover:bg-youtubeDarkRedDark', 
-            stopBg: 'bg-youtubeDarkRed hover:bg-youtubeRed dark:bg-youtubeDarkRedDark dark:hover:bg-youtubeRedDark' 
+        {
+            id: 'youtube',
+            name: '',
+            icon: <FaYoutube className="text-red-500" size={22} />,
+            startBg: 'bg-youtubeRed hover:bg-youtubeDarkRed dark:bg-youtubeRedDark dark:hover:bg-youtubeDarkRedDark',
+            stopBg: 'bg-youtubeDarkRed hover:bg-youtubeRed dark:bg-youtubeDarkRedDark dark:hover:bg-youtubeRedDark'
         },
-        { 
-            id: 'tiktok', 
-            name: '', 
-            icon: <FaTiktok className="text-black dark:text-white" size={22} />, 
-            startBg: 'bg-tiktokBlack hover:bg-tiktokDarkGray dark:bg-tiktokBlackDark dark:hover:bg-tiktokDarkGrayDark', 
-            stopBg: 'bg-tiktokDarkGray hover:bg-tiktokBlack dark:bg-tiktokDarkGrayDark dark:hover:bg-tiktokBlackDark' 
+        {
+            id: 'tiktok',
+            name: '',
+            icon: <FaTiktok className="text-black dark:text-white" size={22} />,
+            startBg: 'bg-tiktokBlack hover:bg-tiktokDarkGray dark:bg-tiktokBlackDark dark:hover:bg-tiktokDarkGrayDark',
+            stopBg: 'bg-tiktokDarkGray hover:bg-tiktokBlack dark:bg-tiktokDarkGrayDark dark:hover:bg-tiktokBlackDark'
         },
-        { 
-            id: 'twitch', 
-            name: '', 
-            icon: <FaTwitch className="text-purple-500" size={22} />, // ใช้ FaTwitch ตรงนี้
-            startBg: 'bg-twitchPurple hover:bg-twitchDarkPurple dark:bg-twitchPurpleDark dark:hover:bg-twitchDarkPurpleDark', 
-            stopBg: 'bg-twitchDarkPurple hover:bg-twitchPurple dark:bg-twitchDarkPurpleDark dark:hover:bg-twitchPurpleDark' 
+        {
+            id: 'twitch',
+            name: '',
+            icon: <FaTwitch className="text-purple-500" size={22} />,
+            startBg: 'bg-twitchPurple hover:bg-twitchDarkPurple dark:bg-twitchPurpleDark dark:hover:bg-twitchDarkPurpleDark',
+            stopBg: 'bg-twitchDarkPurple hover:bg-twitchPurple dark:bg-twitchDarkPurpleDark dark:hover:bg-twitchPurpleDark'
         },
-        { 
-            id: 'shopee', 
-            name: '', 
-            icon: <SiShopee style={{ color: '#EE4D2D' }} size={22} />, // ไอคอน Shopee กำหนดสีตรงนี้
-            startBg: 'bg-shopeeOrange hover:bg-shopeeDarkOrange dark:bg-shopeeOrangeDark dark:hover:bg-shopeeDarkOrangeDark', 
-            stopBg: 'bg-shopeeDarkOrange hover:bg-shopeeOrange dark:bg-shopeeDarkOrangeDark dark:hover:bg-shopeeOrangeDark' 
+        {
+            id: 'shopee',
+            name: '',
+            icon: <SiShopee style={{ color: '#EE4D2D' }} size={22} />,
+            startBg: 'bg-shopeeOrange hover:bg-shopeeDarkOrange dark:bg-shopeeOrangeDark dark:hover:bg-shopeeDarkOrangeDark',
+            stopBg: 'bg-shopeeDarkOrange hover:bg-shopeeOrange dark:bg-shopeeDarkOrangeDark dark:hover:bg-shopeeOrangeDark'
         },
     ];
 
@@ -1759,9 +1740,9 @@ const multiOutputPlatforms = [
             <DisplaySettings
                 streamTitle={streamTitle}
                 onStreamTitleChange={onUpdateStreamTitle}
-                 onUpdate={() => {
-                     onSetModal({type: 'alert', props: { message: 'อัปเดตข้อความวิ่งแล้ว', alertType: 'success' }});
-                 }}
+                onUpdate={() => {
+                   onSetModal({type: 'alert', props: { message: 'อัปเดตข้อความวิ่งแล้ว', alertType: 'success' }});
+               }}
             />
 
             {/* --- NEW & IMPROVED Multi-Output Controls --- */}
@@ -1787,7 +1768,7 @@ const multiOutputPlatforms = [
                 </div>
 
                 {/* --- Platform-Specific Controls --- */}
-                            <div className="space-y-3">
+                        <div className="space-y-3">
                     {multiOutputPlatforms.map((platform) => (
                         <div key={platform.id} className="flex items-center gap-3">
                             <button
@@ -1815,19 +1796,18 @@ const multiOutputPlatforms = [
                         </div>
                     ))}
                     {/* และตรงปุ่ม Restream.io ด้วย */}
-                     <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => onOpenPlatformSettings('restream')}
-                            // แก้ไขตรงนี้: เปลี่ยน text-2xl เป็น text-xl
-                            className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-xl" // <--- เปลี่ยนตรงนี้!
-                            aria-label="Settings for Restream.io"
-                        >
-                           <FaGlobe className="text-purple-500" />
-                        </button>
+                    <div className="flex items-center gap-3">
+                         <button
+                             onClick={() => onOpenPlatformSettings('restream')}
+                            className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-xl"
+                             aria-label="Settings for Restream.io"
+                         >
+                            <FaGlobe className="text-purple-500" />
+                         </button>
                          <div className="flex-1 text-center text-sm text-gray-500 dark:text-gray-400">
-                           ตั้งค่าเพิ่มเติมสำหรับ Restream, Custom RTMP...
+                            ตั้งค่าเพิ่มเติมสำหรับ Restream, Custom RTMP...
                          </div>
-                     </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1916,108 +1896,6 @@ const OBSSettings: FC<{
     );
 };
 
-// This component is no longer needed as its functionality has been merged into SettingsTab
-// const PlatformDestinationSettings: FC<{onOpen: (platform: string) => void}> = ({onOpen}) => {
-//     const platforms = [
-//         { id: 'facebook', icon: <FaFacebookF className="text-blue-500" /> },
-//         { id: 'youtube', icon: <FaYoutube className="text-red-500" /> },
-//         { id: 'tiktok', icon: <FaTiktok className="text-black dark:text-white" /> },
-//         { id: 'instagram', icon: <FaInstagram className="text-pink-500" /> },
-//         { id: 'shopee', icon: <FaShopware className="text-orange-500" /> },
-//         { id: 'custom', icon: <FaSatelliteDish className="text-teal-400" /> },
-//         { id: 'restream', icon: <FaGlobe className="text-purple-500" /> }
-//     ];
-//     return (
-//         <div className="bg-gray-100 dark:bg-gray-700/50 p-4 rounded-lg">
-//             <h3 className="font-semibold mb-3">ตั้งค่าปลายทาง (Stream Destination)</h3>
-//             <div className="flex flex-wrap gap-3 justify-start text-2xl">
-//                 {platforms.map(p => <button key={p.id} onClick={() => onOpen(p.id)} className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600">{p.icon}</button>)}
-//             </div>
-//         </div>
-//     );
-// };
-
-
-
-// ====================================================================
-// Modal Components
-// ====================================================================
-
-const AlertModal: FC<{ message: string; alertType: 'success' | 'error' | 'info'; onClose: () => void; }> = ({ message, alertType, onClose }) => {
-    const icons = {
-        success: <FaCircleCheck className="text-green-500" />,
-        error: <FaCircleXmark className="text-red-500" />,
-        info: <FaCircleInfo className="text-blue-500" />,
-    };
-    return (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm m-4 text-center shadow-2xl">
-                <div className="text-5xl mb-4 flex justify-center">{icons[alertType]}</div>
-                <p className="text-lg mb-6 whitespace-pre-wrap">{message}</p>
-                <button onClick={onClose} className="bg-blue-600 hover:bg-blue-700 text-white w-1/2 py-2 rounded-lg font-semibold">ตกลง</button>
-            </div>
-        </div>
-    );
-};
-
-const ConfirmModal: FC<{ message: string; onConfirm: () => void; onClose: () => void; }> = ({ message, onConfirm, onClose }) => (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm m-4 text-center shadow-2xl">
-            <div className="text-5xl mb-4 flex justify-center"><FaCircleQuestion className="text-yellow-500" /></div>
-            <p className="text-lg mb-6">{message}</p>
-            <div className="flex justify-center gap-4">
-                <button onClick={onClose} className="bg-gray-500 hover:bg-gray-600 text-white w-1/3 py-2 rounded-lg font-semibold">ยกเลิก</button>
-                <button onClick={() => { onConfirm(); onClose(); }} className="bg-red-600 hover:bg-red-700 text-white w-1/3 py-2 rounded-lg font-semibold">ตกลง</button>
-            </div>
-        </div>
-    </div>
-);
-
-const ProductModal: FC<{ product?: Product; onSave: (data: Omit<Product, 'id'>, id?: number) => void; onClose: () => void; }> = ({ product, onSave, onClose }) => {
-    const [name, setName] = useState(product?.name || '');
-    const [price, setPrice] = useState(product?.price || 0);
-    const [category, setCategory] = useState<'general' | 'featured' | 'sale'>(product?.category || 'general');
-    const [icon, setIcon] = useState(product?.icon || '🛍️');
-    const isEditing = !!product;
-
-    const productEmojis = ['🛍️', '👕', '👗', '👠', '👜', '⌚', '💄', '🎮', '📱', '💻', '🏠', '🎁'];
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave({ name, price, category, icon }, product?.id);
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md m-4">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold">{isEditing ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'}</h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-800 dark:hover:text-white text-2xl">&times;</button>
-                </div>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="ชื่อสินค้า" className="w-full p-3 bg-gray-100 dark:bg-gray-700 rounded-lg" required />
-                    <input type="number" value={price} onChange={e => setPrice(Number(e.target.value))} placeholder="ราคา" className="w-full p-3 bg-gray-100 dark:bg-gray-700 rounded-lg" required min="0" />
-                    <select value={category} onChange={e => setCategory(e.target.value as any)} className="w-full p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                        <option value="general">ทั่วไป</option><option value="featured">แนะนำ</option><option value="sale">ลดราคา</option>
-                    </select>
-                    <div>
-                        <label className="font-semibold mb-1 block">ไอคอนสินค้า</label>
-                        <div className="p-2 bg-gray-200 dark:bg-gray-700 rounded-lg grid grid-cols-8 gap-1">
-                            {productEmojis.map(emoji => (
-                                <button key={emoji} type="button" onClick={() => setIcon(emoji)} className={`text-2xl rounded-md p-1 transition-colors hover:bg-gray-300 dark:hover:bg-gray-600 ${icon === emoji ? 'bg-blue-500' : ''}`}>{emoji}</button>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="flex justify-end space-x-3 pt-4">
-                        <button type="button" onClick={onClose} className="py-2 px-5 rounded-lg bg-gray-500 hover:bg-gray-600 text-white font-semibold">ยกเลิก</button>
-                        <button type="submit" className={`py-2 px-5 rounded-lg text-white font-semibold ${isEditing ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'}`}>{isEditing ? 'บันทึก' : 'เพิ่ม'}</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
 const SettingsModal: FC<{
     platform: string;
     obs: OBSWebSocket;
@@ -2026,9 +1904,21 @@ const SettingsModal: FC<{
     onAlert: (props: { message: string, alertType: 'success' | 'error' | 'info' }) => void;
     handleConnectRestream: () => void;
 }> = ({ platform, obs, isConnected, onClose, onAlert, handleConnectRestream }) => {
+    
+    const platformConfigs = {
+        facebook: { name: 'Facebook Live', icon: <FaFacebookF className="text-blue-500" /> },
+        youtube: { name: 'YouTube Live', icon: <FaYoutube className="text-red-500" /> },
+        twitch: { name: 'Twitch Live', icon: <FaTwitch className="text-purple-500" /> },
+        tiktok: { name: 'TikTok Live', icon: <FaTiktok className="text-black dark:text-white" /> },
+        instagram: { name: 'Instagram Live', icon: <FaInstagram className="text-pink-500" /> },
+        shopee: { name: 'Shopee Live', icon: <SiShopee className="text-orange-500" /> },
+        custom: { name: 'Custom RTMP', icon: <FaSatelliteDish className="text-teal-400" /> },
+        restream: { name: 'Restream.io', icon: <FaGlobe className="text-purple-500" /> }
+    };
+    const config = platformConfigs[platform as keyof typeof platformConfigs];
+
     const [url, setUrl] = useState(() => localStorage.getItem(`${platform}-url`) || (platform === 'facebook' ? 'rtmps://live-api-s.facebook.com:443/rtmp/' : ''));
     const [key, setKey] = useState(() => localStorage.getItem(`${platform}-key`) || '');
-    // Facebook specific state
     const [videoBitrate, setVideoBitrate] = useState(() => localStorage.getItem('facebook-videoBitrate') || '6000');
     const [audioBitrate, setAudioBitrate] = useState(() => localStorage.getItem('facebook-audioBitrate') || '160');
     const [encoder, setEncoder] = useState(() => localStorage.getItem('facebook-encoder') || 'obs_x264');
@@ -2047,71 +1937,44 @@ const SettingsModal: FC<{
     }, [platform]);
 
 
-    const handleSave = async () => {
-        if (!isConnected) return onAlert({ message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' });
-        if (!url || !key) return onAlert({ message: 'กรุณากรอก Server URL และ Stream Key', alertType: 'error' });
+const handleSave = async () => {
+    if (!isConnected) {
+        return onAlert({ message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' });
+    }
+    if (!url || !key) {
+        return onAlert({ message: 'กรุณากรอก Server URL และ Stream Key', alertType: 'error' });
+    }
 
-        try {
-            await obs.call('SetStreamServiceSettings', {
-                streamServiceType: 'rtmp_custom',
-                streamServiceSettings: { server: url, key }
-            });
-            localStorage.setItem(`${platform}-url`, url);
-            localStorage.setItem(`${platform}-key`, key);
+    localStorage.setItem(`${platform}-url`, url);
+    localStorage.setItem(`${platform}-key`, key);
 
-            if (platform === 'facebook') {
-                const { outputs } = await obs.call('GetOutputList');
-                const streamOutput = outputs.find((o: any) => o.outputFlags && o.outputFlags.OBS_OUTPUT_VIDEO && o.outputKind === 'rtmp_output');
-                if (streamOutput) {
-                    const { outputSettings: currentOutputSettings } = await obs.call('GetOutputSettings', { outputName: (streamOutput.outputName as string) });
-
-                    const newVideoBitrate = parseInt(videoBitrate);
-                    const newAudioBitrate = parseInt(audioBitrate);
-
-                    const newSettings = {
-                        ...(currentOutputSettings as object),
-                        bitrate: newVideoBitrate,
-                        audioBitrate: newAudioBitrate,
-                        encoderSettings: {
-                            ...(currentOutputSettings?.encoderSettings as object),
-                            preset: preset,
-                        },
-                        encoder: encoder,
-                    };
-
-                    await obs.call('SetOutputSettings', { outputName: streamOutput.outputName as string, outputSettings: newSettings });
-
-                    localStorage.setItem('facebook-videoBitrate', videoBitrate);
-                    localStorage.setItem('facebook-audioBitrate', audioBitrate);
-                    localStorage.setItem('facebook-encoder', encoder);
-                    localStorage.setItem('facebook-preset', preset);
-                } else {
-                    onAlert({ message: `ไม่พบ Stream Output ชนิด RTMP ใน OBS!`, alertType: 'error' });
-                    return;
+    try {
+        if (platform === 'facebook') {
+            // นี่คือส่วนที่เคยมีปัญหา เพราะไม่มี 'obs-multi-rtmp' plugin ในโค้ด
+            // แต่เนื่องจากโค้ดที่คุณส่งมา มีฟังก์ชัน multi-output แล้ว
+            // คุณสามารถใช้ฟังก์ชันเหล่านั้นได้
+            await obs.call('CallVendorRequest', {
+                vendorName: "obs-multi-rtmp",
+                requestType: "update_target",
+                requestData: {
+                    target_name: platform, // ใช้ชื่อ platform เป็น target name
+                    // ส่งค่าการตั้งค่าไปให้ plugin
+                    url: url,
+                    key: key,
+                    video_bitrate: parseInt(videoBitrate),
+                    audio_bitrate: parseInt(audioBitrate),
+                    encoder: encoder,
+                    preset: preset
                 }
-            }
-
-            onAlert({ message: `ตั้งค่าปลายทางเป็น ${config.name} สำเร็จ!`, alertType: 'success' });
-            onClose();
-
-        } catch (error: any) {
-            console.error("Save Settings Error:", error);
-            onAlert({ message: 'เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถบันทึกได้'), alertType: 'error' });
+            });
         }
-    };
-
-
-    const platformConfigs = {
-        facebook: { name: 'Facebook Live', icon: <FaFacebookF className="text-blue-500" /> },
-        youtube: { name: 'YouTube Live', icon: <FaYoutube className="text-red-500" /> },
-        twitch: { name: 'Twitch Live', icon: <FaTiktok className="text-purple-500" /> },
-        tiktok: { name: 'TikTok Live', icon: <FaTiktok className="text-black dark:text-white" /> },
-        instagram: { name: 'Instagram Live', icon: <FaInstagram className="text-pink-500" /> },
-        shopee: { name: 'Shopee Live', icon: <FaShopware className="text-orange-500" /> },
-        custom: { name: 'Custom RTMP', icon: <FaSatelliteDish className="text-teal-400" /> },
-        restream: { name: 'Restream.io', icon: <FaGlobe className="text-purple-500" /> }
-    };
-    const config = platformConfigs[platform as keyof typeof platformConfigs];
+        onAlert({ message: `บันทึกค่าสำหรับ ${platform} สำเร็จ!`, alertType: 'success' });
+        onClose();
+    } catch (error: any) {
+        onClose();
+        onAlert({ message: `บันทึกค่าสำหรับ ${platform} ล้มเหลว: ${error.message}`, alertType: 'error' });
+    }
+};
 
     return (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -2172,16 +2035,16 @@ const SettingsModal: FC<{
                                             <option value="qsv_h264">Hardware (Intel QSV, H.264)</option>
                                         </select>
                                     </div>
-                                     <div>
-                                        <label className="block mb-1 font-semibold text-sm">Encoder Preset</label>
-                                        <select value={preset} onChange={e => setPreset(e.target.value)} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
-                                            <option value="quality">เน้นคุณภาพ (Quality)</option>
-                                            <option value="balanced">สมดุล (Balanced)</option>
-                                            <option value="speed">เน้นความเร็ว (Speed)</option>
-                                            <option value="veryfast">Very Fast (x264)</option>
-                                            <option value="faster">Faster (x264)</option>
-                                        </select>
-                                    </div>
+                                    <div>
+                                         <label className="block mb-1 font-semibold text-sm">Encoder Preset</label>
+                                         <select value={preset} onChange={e => setPreset(e.target.value)} className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
+                                             <option value="quality">เน้นคุณภาพ (Quality)</option>
+                                             <option value="balanced">สมดุล (Balanced)</option>
+                                             <option value="speed">เน้นความเร็ว (Speed)</option>
+                                             <option value="veryfast">Very Fast (x264)</option>
+                                             <option value="faster">Faster (x264)</option>
+                                         </select>
+                                     </div>
                                 </>
                             )}
                         </>
@@ -2197,5 +2060,77 @@ const SettingsModal: FC<{
         </div>
     );
 };
+const AlertModal: FC<{ message: string; alertType: 'success' | 'error' | 'info'; onClose: () => void; }> = ({ message, alertType, onClose }) => {
+    const icons = {
+        success: <FaCircleCheck className="text-green-500" />,
+        error: <FaCircleXmark className="text-red-500" />,
+        info: <FaCircleInfo className="text-blue-500" />,
+    };
 
+    return (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm m-4 text-center shadow-2xl">
+                <div className="text-5xl mb-4 flex justify-center">{icons[alertType]}</div>
+                <p className="text-lg mb-6 whitespace-pre-wrap">{message}</p>
+                <button onClick={onClose} className="bg-blue-600 hover:bg-blue-700 text-white w-1/2 py-2 rounded-lg font-semibold">ตกลง</button>
+            </div>
+        </div>
+    );
+};
+const ConfirmModal: FC<{ message: string; onConfirm: () => void; onClose: () => void; }> = ({ message, onConfirm, onClose }) => (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm m-4 text-center shadow-2xl">
+            <div className="text-5xl mb-4 flex justify-center"><FaCircleQuestion className="text-yellow-500" /></div>
+            <p className="text-lg mb-6">{message}</p>
+            <div className="flex justify-center gap-4">
+                <button onClick={onClose} className="bg-gray-500 hover:bg-gray-600 text-white w-1/3 py-2 rounded-lg font-semibold">ยกเลิก</button>
+                <button onClick={() => { onConfirm(); onClose(); }} className="bg-red-600 hover:bg-red-700 text-white w-1/3 py-2 rounded-lg font-semibold">ตกลง</button>
+            </div>
+        </div>
+    </div>
+);
+const ProductModal: FC<{ product?: Product; onSave: (data: Omit<Product, 'id'>, id?: number) => void; onClose: () => void; }> = ({ product, onSave, onClose }) => {
+    const [name, setName] = useState(product?.name || '');
+    const [price, setPrice] = useState(product?.price || 0);
+    const [category, setCategory] = useState<'general' | 'featured' | 'sale'>(product?.category || 'general');
+    const [icon, setIcon] = useState(product?.icon || '🛍️');
+    const isEditing = !!product;
+
+    const productEmojis = ['🛍️', '👕', '👗', '👠', '👜', '⌚', '💄', '🎮', '📱', '💻', '🏠', '🎁'];
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave({ name, price, category, icon }, product?.id);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md m-4">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold">{isEditing ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'}</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-800 dark:hover:text-white text-2xl">&times;</button>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="ชื่อสินค้า" className="w-full p-3 bg-gray-100 dark:bg-gray-700 rounded-lg" required />
+                    <input type="number" value={price} onChange={e => setPrice(Number(e.target.value))} placeholder="ราคา" className="w-full p-3 bg-gray-100 dark:bg-gray-700 rounded-lg" required min="0" />
+                    <select value={category} onChange={e => setCategory(e.target.value as any)} className="w-full p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                        <option value="general">ทั่วไป</option><option value="featured">แนะนำ</option><option value="sale">ลดราคา</option>
+                    </select>
+                    <div>
+                        <label className="font-semibold mb-1 block">ไอคอนสินค้า</label>
+                        <div className="p-2 bg-gray-200 dark:bg-gray-700 rounded-lg grid grid-cols-8 gap-1">
+                            {productEmojis.map(emoji => (
+                                <button key={emoji} type="button" onClick={() => setIcon(emoji)} className={`text-2xl rounded-md p-1 transition-colors hover:bg-gray-300 dark:hover:bg-gray-600 ${icon === emoji ? 'bg-blue-500' : ''}`}>{emoji}</button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex justify-end space-x-3 pt-4">
+                        <button type="button" onClick={onClose} className="py-2 px-5 rounded-lg bg-gray-500 hover:bg-gray-600 text-white font-semibold">ยกเลิก</button>
+                        <button type="submit" className={`py-2 px-5 rounded-lg text-white font-semibold ${isEditing ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'}`}>{isEditing ? 'บันทึก' : 'เพิ่ม'}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
 export default App;
