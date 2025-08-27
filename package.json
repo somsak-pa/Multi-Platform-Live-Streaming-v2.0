@@ -5,16 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build && electron-builder",
     "preview": "vite preview",
     "tauri": "tauri",
     "electron-build": "electron-builder --windows --publish never",
     "dist": "electron-builder --mac --windows",
-    "electron-dev": "concurrently \"npm run dev\" \"electron .\""
+    "electron-dev": "concurrently \"npm run dev\" \"wait-on dist/index.html && electron .\""
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-opener": "^2",
+    "electron-squirrel-startup": "^1.0.1",
     "execa": "^9.6.0",
     "node-fetch": "^2.7.0",
     "obs-websocket-js": "^5.0.6",
@@ -24,19 +24,21 @@
   },
   "devDependencies": {
     "@tailwindcss/aspect-ratio": "^0.4.2",
-    "@tauri-apps/cli": "^2.6.2",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
     "electron": "^37.2.1",
     "electron-builder": "^26.0.12",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.6.2",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vite-plugin-electron": "^0.29.0",
+    "wait-on": "^8.0.4"
   },
-  "main": "electron.cjs",
+  "main": "dist-electron/electron.js",
   "build": {
     "appId": "com.yourcompany.liveshow",
     "productName": "Live Show",

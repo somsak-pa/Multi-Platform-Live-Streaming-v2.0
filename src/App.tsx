@@ -12,10 +12,8 @@ import {
 import OBSWebSocket from 'obs-websocket-js';
 import { SiShopee } from 'react-icons/si';
 
-// ใช้ invoke จาก Tauri API
-//import { invoke } from "@tauri-apps/api/tauri";
-
-// Type Definitions - นำเข้าจาก src/types.ts
+// ✅ เพิ่มบรรทัดนี้: import { invoke } จาก @tauri-apps/api/core
+import { invoke } from '@tauri-apps/api/core';
 import {
     Product, Comment, OBSScene, OBSSource, OBSAudioInput, AppState, Action, RestreamChannel
 } from './types';
@@ -590,6 +588,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
             dispatch({ type: 'SET_OBS_STATUS', payload: 'connected' });
             setModal({ type: 'alert', props: { message: 'เชื่อมต่อและยืนยันตัวตนกับ OBS สำเร็จ!', alertType: 'success' } });
             await fetchOBSData();
+
         };
 
         const onConnectionClosed = () => {
@@ -665,7 +664,7 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
             obsInstance.off('InputVolumeMeters', onInputVolumeMeters);
             if(obsInstance.identified) obsInstance.disconnect();
         };
-    }, [fetchOBSData, dispatch, setModal, startStreamTimer, stopStreamTimer]);
+    }, [fetchOBSData, dispatch, setModal, startStreamTimer, stopStreamTimer, appState.restreamChannels]);
 
     // --- Restream OAuth Callback Effect ---
     useEffect(() => {
@@ -801,30 +800,47 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
         }
     }, []);
 
-    // --- Multi-Output Stream Handlers ---
-    const startSpecificMultiOutput = useCallback(async (targetName: string) => {
-        console.log("DEBUG: obs.current identified =", obs.current.identified);
+const startSpecificMultiOutput = useCallback(async (targetName: string) => {
+    // โค้ดส่วนนี้จะสั่งให้ FFmpeg กระจายสัญญาณเอง
+    if (!obs.current.identified) {
+        setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อหรือยืนยันตัวตนกับ OBS โปรดเชื่อมต่อก่อน', alertType: 'error' } });
+        return;
+    }
 
-        if (!obs.current.identified) {
-            setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อหรือยืนยันตัวตนกับ OBS โปรดเชื่อมต่อก่อน', alertType: 'error' } });
+    try {
+        console.log('Checking for electronAPI:', window.electronAPI);
+        // ✅ เปลี่ยนจาก Tauri invoke มาใช้ Electron API ที่เราสร้างไว้
+        // const { invoke } = await import('@tauri-apps/api/core'); // << ลบบรรทัดนี้
+
+        let destinations: string[] = [];
+        let srtInput = 'srt://127.0.0.1:10000?mode=listener';
+
+        const streamUrl = localStorage.getItem(`${targetName}-url`);
+        const streamKey = localStorage.getItem(`${targetName}-key`);
+        console.log('streamUrl : ' + streamUrl);
+        console.log('streamKey : ' + streamKey);
+
+        if (streamUrl && streamKey) {
+            destinations.push(`${streamUrl}/${streamKey}`);
+        } else {
+            setModal({ type: 'alert', props: { message: `ไม่พบการตั้งค่าปลายทางสำหรับ: ${targetName}`, alertType: 'error' } });
             return;
         }
 
-        try {
-            console.log('targetName : ' + targetName)
-            await obs.current.call('CallVendorRequest', {
-                vendorName: "obs-multi-rtmp",
-                requestType: "start_output",
-                requestData: {
-                    target_name: targetName
-                }
-            });
-            setModal({ type: 'alert', props: { message: `เริ่มสตรีม ${targetName} สำเร็จ!`, alertType: 'success' } });
-        } catch (error: any) {
-            console.error(`[MultiOutput] Failed to start output ${targetName}:`, error);
-            setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
-        }
-    }, [appState.obsStatus, setModal, obs]);
+        // ✅ เรียกใช้ผ่าน window.electronAPI.invoke
+        // และใช้ชื่อ channel เป็น 'ffmpeg-start' (มีขีด) ให้ตรงกับ Backend
+        await window.electronAPI.invoke('ffmpeg-start', {
+            destinations: destinations,
+            srtInput: srtInput,
+            ffmpegPath: 'C:\\ffmpeg\\bin\\ffmpeg.exe',
+        });
+
+        setModal({ type: 'alert', props: { message: `เริ่มสตรีมไปยัง ${targetName} สำเร็จ!`, alertType: 'success' } });
+    } catch (error: any) {
+        console.error(`[MultiOutput] Failed to start output ${targetName}:`, error);
+        setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
+    }
+}, [obs.current.identified, setModal]);
 
     const stopSpecificMultiOutput = useCallback(async (targetName: string) => {
         if (appState.obsStatus !== 'connected') {
@@ -899,13 +915,19 @@ const handleStartStream = async () => {
             twitchUrl: localStorage.getItem('twitch-key') ? 'rtmp://live-sjc.twitch.tv/app/' + localStorage.getItem('twitch-key') : '',
             youtubeUrl: localStorage.getItem('youtube-key') ? 'rtmp://a.rtmp.youtube.com/live2/' + localStorage.getItem('youtube-key') : ''
         };
-        
-        // นี่คือการเรียกใช้ Command ใน Back-End (Rust) ของ Tauri
-        // โดยเรียกใช้ Command ที่ชื่อว่า 'start_ffmpeg'
-        //await invoke('start_ffmpeg', { twitchUrl: streamConfig.twitchUrl, youtubeUrl: streamConfig.youtubeUrl });
+
+        const destinations = [streamConfig.twitchUrl, streamConfig.youtubeUrl].filter(Boolean);
+        const srtInput = 'srt://127.0.0.1:10000?mode=listener';
+
+        // ✅ ใช้ invoke ที่นี่
+        await invoke('ffmpeg_start', {
+            destinations: destinations,
+            srtInput: srtInput
+        });
         
         // สั่งให้ OBS เริ่มสตรีม หลังจากที่ Back-End (FFmpeg) พร้อมแล้ว
         await obs.current.call('StartStream');
+        setModal({ type: 'alert', props: { message: 'เริ่มสตรีมสำเร็จแล้ว!', alertType: 'success' } });
 
     } catch (error: any) {
         console.error("❌ Failed to start stream:", error);
@@ -1698,35 +1720,35 @@ const {
 const multiOutputPlatforms = [
         {
             id: 'facebook',
-            name: '',
+            name: 'facebook',
             icon: <FaFacebookF className="text-blue-500" size={22} />,
             startBg: 'bg-facebookBlue hover:bg-facebookDarkBlue dark:bg-facebookBlueDark dark:hover:bg-facebookDarkBlueDark',
             stopBg: 'bg-facebookDarkBlue hover:bg-facebookBlue dark:bg-facebookDarkBlueDark dark:hover:bg-facebookBlueDark'
         },
         {
             id: 'youtube',
-            name: '',
+            name: 'youtube',
             icon: <FaYoutube className="text-red-500" size={22} />,
             startBg: 'bg-youtubeRed hover:bg-youtubeDarkRed dark:bg-youtubeRedDark dark:hover:bg-youtubeDarkRedDark',
             stopBg: 'bg-youtubeDarkRed hover:bg-youtubeRed dark:bg-youtubeDarkRedDark dark:hover:bg-youtubeRedDark'
         },
         {
             id: 'tiktok',
-            name: '',
+            name: 'tiktok',
             icon: <FaTiktok className="text-black dark:text-white" size={22} />,
             startBg: 'bg-tiktokBlack hover:bg-tiktokDarkGray dark:bg-tiktokBlackDark dark:hover:bg-tiktokDarkGrayDark',
             stopBg: 'bg-tiktokDarkGray hover:bg-tiktokBlack dark:bg-tiktokDarkGrayDark dark:hover:bg-tiktokBlackDark'
         },
         {
             id: 'twitch',
-            name: '',
+            name: 'twitch',
             icon: <FaTwitch className="text-purple-500" size={22} />,
             startBg: 'bg-twitchPurple hover:bg-twitchDarkPurple dark:bg-twitchPurpleDark dark:hover:bg-twitchDarkPurpleDark',
             stopBg: 'bg-twitchDarkPurple hover:bg-twitchPurple dark:bg-twitchDarkPurpleDark dark:hover:bg-twitchPurpleDark'
         },
         {
             id: 'shopee',
-            name: '',
+            name: 'shopee',
             icon: <SiShopee style={{ color: '#EE4D2D' }} size={22} />,
             startBg: 'bg-shopeeOrange hover:bg-shopeeDarkOrange dark:bg-shopeeOrangeDark dark:hover:bg-shopeeDarkOrangeDark',
             stopBg: 'bg-shopeeDarkOrange hover:bg-shopeeOrange dark:bg-shopeeDarkOrangeDark dark:hover:bg-shopeeOrangeDark'
@@ -1813,11 +1835,6 @@ const multiOutputPlatforms = [
         </div>
     );
 };
-// ====================================================================
-// END: EDITED SECTION
-// ====================================================================
-
-
 const OBSSettings: FC<{
     status: AppState['obsStatus'];
     onConnect: (ip: string, port: string, pass:string, save: boolean) => void;
@@ -1969,9 +1986,9 @@ const handleSave = async () => {
             });
         }
         onAlert({ message: `บันทึกค่าสำหรับ ${platform} สำเร็จ!`, alertType: 'success' });
-        onClose();
+
     } catch (error: any) {
-        onClose();
+
         onAlert({ message: `บันทึกค่าสำหรับ ${platform} ล้มเหลว: ${error.message}`, alertType: 'error' });
     }
 };
