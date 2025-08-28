@@ -4,7 +4,7 @@ import useLocalStorage from './hooks/useLocalStorage';
 import { ObsManagementPanel } from './components/ObsManagementPanel';
 import {
     FaFacebookF, FaYoutube, FaTiktok, FaInstagram, FaBoxOpen, FaPlus, FaEye,
-    FaPlay, FaStop, FaCheckDouble, FaComments, FaGear, FaPaperPlane, FaPencil,
+    FaPlay, FaStop, FaComments, FaGear, FaPaperPlane, FaPencil,
     FaTrash, FaSun, FaMoon, FaChevronDown, FaKey, FaSatelliteDish, FaCircleCheck, FaCircleXmark,
     FaCircleInfo, FaCircleQuestion, FaEyeSlash, FaMicrophone,
     FaGlobe, FaUsers, FaTwitch
@@ -801,41 +801,66 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
     }, []);
 
 const startSpecificMultiOutput = useCallback(async (targetName: string) => {
-    // โค้ดส่วนนี้จะสั่งให้ FFmpeg กระจายสัญญาณเอง
     if (!obs.current.identified) {
         setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อหรือยืนยันตัวตนกับ OBS โปรดเชื่อมต่อก่อน', alertType: 'error' } });
         return;
     }
 
     try {
-        console.log('Checking for electronAPI:', window.electronAPI);
-        // ✅ เปลี่ยนจาก Tauri invoke มาใช้ Electron API ที่เราสร้างไว้
-        // const { invoke } = await import('@tauri-apps/api/core'); // << ลบบรรทัดนี้
-
+        // ✅ 1. สั่งให้ FFmpeg เริ่มทำงานและรอรับสัญญาณก่อน
         let destinations: string[] = [];
-        let srtInput = 'srt://127.0.0.1:10000?mode=listener';
-
+        const rtmpInput = 'rtmp://127.0.0.1/live/my-stream-key'; 
+        const ffmpegPath = 'C:\\ffmpeg\\bin\\ffmpeg.exe';
+        
         const streamUrl = localStorage.getItem(`${targetName}-url`);
         const streamKey = localStorage.getItem(`${targetName}-key`);
-        console.log('streamUrl : ' + streamUrl);
-        console.log('streamKey : ' + streamKey);
 
         if (streamUrl && streamKey) {
-            destinations.push(`${streamUrl}/${streamKey}`);
+            destinations.push(`${streamUrl}${streamKey}`); 
         } else {
             setModal({ type: 'alert', props: { message: `ไม่พบการตั้งค่าปลายทางสำหรับ: ${targetName}`, alertType: 'error' } });
             return;
         }
 
-        // ✅ เรียกใช้ผ่าน window.electronAPI.invoke
-        // และใช้ชื่อ channel เป็น 'ffmpeg-start' (มีขีด) ให้ตรงกับ Backend
+        // เราจะให้ FFmpeg เริ่มทำงานก่อน เพื่อให้มันพร้อมที่จะรับสัญญาณจาก OBS
         await window.electronAPI.invoke('ffmpeg-start', {
             destinations: destinations,
-            srtInput: srtInput,
-            ffmpegPath: 'C:\\ffmpeg\\bin\\ffmpeg.exe',
+            srtInput: rtmpInput, // ใช้ rtmpInput แทน
+            ffmpegPath: ffmpegPath,
         });
 
+        // ✅ 2. รอให้ FFmpeg มีเวลาเริ่มต้น (ประมาณ 2-3 วินาที)
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        // ✅ 3. สั่งให้ OBS เริ่มสตรีมไปยังปลายทางที่ตั้งค่าไว้ (RTMP Server)
+        console.log("Attempting to start OBS stream...");
+        await obs.current.call('StartStream');
+
+        // ✅ 4. รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
+        let isStreamActive = false;
+        let attemptCount = 0;
+        const maxAttempts = 10;
+        const checkInterval = 1000;
+
+        while (!isStreamActive && attemptCount < maxAttempts) {
+            console.log(`Checking stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
+            const status = await obs.current.call('GetStreamStatus');
+            isStreamActive = status.outputActive;
+            if (!isStreamActive) {
+                await new Promise(resolve => setTimeout(resolve, checkInterval));
+            }
+            attemptCount++;
+        }
+
+        if (!isStreamActive) {
+            console.error("OBS stream did not start after multiple attempts.");
+            setModal({ type: 'alert', props: { message: 'ไม่สามารถสั่งให้ OBS เริ่มสตรีมได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง', alertType: 'error' } });
+            return;
+        }
+
+        console.log("OBS stream started successfully. Now FFmpeg is running and ready.");
         setModal({ type: 'alert', props: { message: `เริ่มสตรีมไปยัง ${targetName} สำเร็จ!`, alertType: 'success' } });
+
     } catch (error: any) {
         console.error(`[MultiOutput] Failed to start output ${targetName}:`, error);
         setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
@@ -917,16 +942,46 @@ const handleStartStream = async () => {
         };
 
         const destinations = [streamConfig.twitchUrl, streamConfig.youtubeUrl].filter(Boolean);
-        const srtInput = 'srt://127.0.0.1:10000?mode=listener';
+        //const srtInput = 'srt://localhost:10000?mode=caller&latency=1000';
+        const rtmpInput = 'rtmp://127.0.0.1/live/my-stream-key';
+        const ffmpegPath = 'C:\\ffmpeg\\bin\\ffmpeg.exe';
 
-        // ✅ ใช้ invoke ที่นี่
-        await invoke('ffmpeg_start', {
-            destinations: destinations,
-            srtInput: srtInput
-        });
-        
-        // สั่งให้ OBS เริ่มสตรีม หลังจากที่ Back-End (FFmpeg) พร้อมแล้ว
+        // 1. สั่งให้ OBS เริ่มสตรีม
+        console.log("Attempting to start OBS stream...");
         await obs.current.call('StartStream');
+
+        // 2. รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
+        let isStreamActive = false;
+        let attemptCount = 0;
+        const maxAttempts = 10;
+        const checkInterval = 1000; // ตรวจสอบทุก 1 วินาที
+
+        while (!isStreamActive && attemptCount < maxAttempts) {
+            console.log(`Checking stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
+            const status = await obs.current.call('GetStreamStatus');
+            isStreamActive = status.outputActive;
+            if (!isStreamActive) {
+                await new Promise(resolve => setTimeout(resolve, checkInterval));
+            }
+            attemptCount++;
+        }
+
+        if (!isStreamActive) {
+            console.error("OBS stream did not start after multiple attempts.");
+            setModal({ type: 'alert', props: { message: 'ไม่สามารถสั่งให้ OBS เริ่มสตรีมได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง', alertType: 'error' } });
+            return;
+        }
+
+        console.log("OBS stream started successfully. Now starting FFmpeg.");
+
+        // 3. สั่งให้ FFmpeg เริ่มทำงานและรอรับสัญญาณจาก OBS
+        await window.electronAPI.invoke('ffmpeg-start', {
+            destinations: destinations,
+            //srtInput: srtInput,
+            rtInput: rtmpInput, 
+            ffmpegPath: ffmpegPath,
+        });
+
         setModal({ type: 'alert', props: { message: 'เริ่มสตรีมสำเร็จแล้ว!', alertType: 'success' } });
 
     } catch (error: any) {
@@ -938,7 +993,6 @@ const handleStartStream = async () => {
         setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มไลฟ์ได้: ${errorMessage}`, alertType: 'error' } });
     }
 };
-
     const handleStopStream = useCallback(async () => {
         try {
             await obs.current.call('StopStream');
@@ -1326,10 +1380,10 @@ const StreamPanel: FC<{
        // runningText,
         overlayProduct,
         videoRef,
-        onStartStream,
-        onStopStream,
-        onCheckSettings,
-        isObsConnected,
+        // onStartStream,
+        // onStopStream,
+        // onCheckSettings,
+        // isObsConnected,
         // onOpenStreamDetails, // ไม่ได้ใช้ตรงๆ ใน StreamPanel UI
     } = props;
 
@@ -1351,11 +1405,11 @@ const StreamPanel: FC<{
                     {<div className="inline-block py-2 text-white font-semibold animate-scroll-left">{runningText}</div>}
                 </div> */}
             </div>
-            <div className="mt-auto pt-4 grid grid-cols-3 gap-3">
+            {/* <div className="mt-auto pt-4 grid grid-cols-3 gap-3">
                 <button onClick={onStartStream} disabled={!isObsConnected || isStreaming} className="control-btn bg-green-600 hover:bg-green-700 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaPlay className="mr-2" />เริ่มไลฟ์</button>
                 <button onClick={onStopStream} disabled={!isObsConnected || !isStreaming} className="control-btn bg-red-600 hover:bg-red-700 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaStop className="mr-2" />หยุดไลฟ์</button>
                 <button onClick={onCheckSettings} disabled={!isObsConnected} className="control-btn bg-yellow-500 hover:bg-yellow-600 rounded-lg text-white px-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"><FaCheckDouble className="mr-2" />ตรวจสอบค่า</button>
-            </div>
+            </div> */}
         </>
     );
 
@@ -1921,7 +1975,7 @@ const SettingsModal: FC<{
     onAlert: (props: { message: string, alertType: 'success' | 'error' | 'info' }) => void;
     handleConnectRestream: () => void;
 }> = ({ platform, obs, isConnected, onClose, onAlert, handleConnectRestream }) => {
-    
+
     const platformConfigs = {
         facebook: { name: 'Facebook Live', icon: <FaFacebookF className="text-blue-500" /> },
         youtube: { name: 'YouTube Live', icon: <FaYoutube className="text-red-500" /> },

@@ -1,7 +1,7 @@
 import require$$3$1, { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawn } from "node:child_process";
+import "node:child_process";
 import require$$0$1 from "path";
 import require$$1$1 from "child_process";
 import require$$0 from "tty";
@@ -452,13 +452,13 @@ function requireElectronSquirrelStartup() {
   if (hasRequiredElectronSquirrelStartup) return electronSquirrelStartup;
   hasRequiredElectronSquirrelStartup = 1;
   var path2 = require$$0$1;
-  var spawn2 = require$$1$1.spawn;
+  var spawn = require$$1$1.spawn;
   var debug2 = requireSrc()("electron-squirrel-startup");
   var app2 = require$$3$1.app;
   var run = function(args, done) {
     var updateExe = path2.resolve(path2.dirname(process.execPath), "..", "Update.exe");
     debug2("Spawning `%s` with args `%s`", updateExe, args);
-    spawn2(updateExe, args, {
+    spawn(updateExe, args, {
       detached: true
     }).on("close", done);
   };
@@ -490,7 +490,6 @@ const squirrelStartup = /* @__PURE__ */ getDefaultExportFromCjs(electronSquirrel
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 let mainWindow = null;
-let ffmpegProcess = null;
 if (squirrelStartup) {
   app.quit();
 }
@@ -528,74 +527,25 @@ app.on("activate", () => {
 });
 app.on("before-quit", () => {
   console.log("App is quitting, ensuring FFmpeg is stopped.");
-  stopStreaming();
 });
-function manageFFmpegProcess(ffmpegPath, commandArgs) {
-  if (ffmpegProcess) {
-    console.warn("FFmpeg is already running. Stopping it before starting a new one.");
-    stopStreaming();
-  }
-  try {
-    ffmpegProcess = spawn(ffmpegPath, commandArgs);
-    console.log(`FFmpeg process started with PID: ${ffmpegProcess.pid}`);
-    if (mainWindow) {
-      mainWindow.webContents.send("ffmpeg-log", `FFmpeg process started with PID: ${ffmpegProcess.pid}`);
-    }
-    ffmpegProcess.stderr.on("data", (data) => {
-      const log = data.toString();
-      console.error(`FFmpeg: ${log.trim()}`);
-      if (mainWindow) {
-        mainWindow.webContents.send("ffmpeg-log", log);
-      }
-    });
-    ffmpegProcess.on("close", (code) => {
-      const log = `FFmpeg process exited with code ${code}`;
-      console.log(log);
-      if (mainWindow) {
-        mainWindow.webContents.send("ffmpeg-log", log);
-      }
-      ffmpegProcess = null;
-    });
-    ffmpegProcess.on("error", (err) => {
-      const log = `Failed to start FFmpeg process: ${err.message}`;
-      console.error(log);
-      if (mainWindow) {
-        mainWindow.webContents.send("ffmpeg-log", log);
-      }
-      ffmpegProcess = null;
-    });
-  } catch (error) {
-    const log = `Error spawning FFmpeg: ${error.message}`;
-    console.error(log);
-    if (mainWindow) {
-      mainWindow.webContents.send("ffmpeg-log", log);
-    }
-  }
-}
-function stopStreaming() {
-  if (ffmpegProcess) {
-    console.log(`Stopping FFmpeg process (PID: ${ffmpegProcess.pid})...`);
-    ffmpegProcess.kill("SIGINT");
-    ffmpegProcess = null;
-  }
-}
 ipcMain.handle("ffmpeg-start", (event, { destinations, ffmpegPath, srtInput }) => {
-  console.log('IPC event "ffmpeg-start" received.');
-  if (!destinations || destinations.length === 0 || !ffmpegPath || !srtInput) {
-    const errorMsg = "Invalid arguments received for ffmpeg-start.";
-    console.error(errorMsg, { destinations, ffmpegPath, srtInput });
-    return { success: false, error: errorMsg };
+  const errors = [];
+  if (!ffmpegPath || typeof ffmpegPath !== "string") {
+    errors.push("ffmpegPath is required and must be a string.");
   }
-  const commandArgs = ["-hide_banner", "-i", srtInput, "-c", "copy"];
-  destinations.forEach((dest) => {
-    commandArgs.push("-f", "flv", dest);
-  });
-  console.log(`Executing: ${ffmpegPath} ${commandArgs.join(" ")}`);
-  manageFFmpegProcess(ffmpegPath, commandArgs);
+  if (!srtInput || typeof srtInput !== "string") {
+    errors.push("Input stream URL (srtInput) is required and must be a string.");
+  }
+  if (!destinations || !Array.isArray(destinations) || destinations.length === 0) {
+    errors.push("At least one destination URL is required.");
+  }
+  if (errors.length > 0) {
+    console.error("Invalid arguments:", errors.join(", "));
+    return { success: false, error: errors.join(". ") };
+  }
   return { success: true };
 });
 ipcMain.handle("ffmpeg-stop", () => {
   console.log('IPC event "ffmpeg-stop" received.');
-  stopStreaming();
   return { success: true };
 });

@@ -64,47 +64,51 @@ app.on('before-quit', () => {
 });
 
 // --- ส่วนที่ 4: โค้ดควบคุม FFmpeg และ IPC ---
+// --- แก้ไขในส่วนของ manageFFmpegProcess ---
 function manageFFmpegProcess(ffmpegPath, commandArgs) {
-    if (ffmpegProcess) {
-        console.warn('FFmpeg is already running. Stopping it before starting a new one.');
-        stopStreaming();
-    }
-    // (โค้ดส่วนนี้เหมือนเดิม)
-    try {
-        ffmpegProcess = spawn(ffmpegPath, commandArgs);
-        console.log(`FFmpeg process started with PID: ${ffmpegProcess.pid}`);
-        if (mainWindow) {
-            mainWindow.webContents.send('ffmpeg-log', `FFmpeg process started with PID: ${ffmpegProcess.pid}`);
-        }
-        ffmpegProcess.stderr.on('data', (data) => {
-            const log = data.toString();
-            console.error(`FFmpeg: ${log.trim()}`);
-            if (mainWindow) {
-                mainWindow.webContents.send('ffmpeg-log', log);
-            }
-        });
-        ffmpegProcess.on('close', (code) => {
-            const log = `FFmpeg process exited with code ${code}`;
-            console.log(log);
-            if (mainWindow) {
-                mainWindow.webContents.send('ffmpeg-log', log);
-            }
-            ffmpegProcess = null;
-        });
-        ffmpegProcess.on('error', (err) => {
-            const log = `Failed to start FFmpeg process: ${err.message}`;
-            console.error(log);
-            if (mainWindow) {
-                mainWindow.webContents.send('ffmpeg-log', log);
-            }
-            ffmpegProcess = null;
-        });
-    } catch (error) {
-        const log = `Error spawning FFmpeg: ${error.message}`;
-        console.error(log);
+    // ... (โค้ดส่วนอื่น ๆ เหมือนเดิม) ...
+
+    ffmpegProcess.stderr.on('data', (data) => {
+        const log = data.toString();
+        // ส่ง log ไปยัง UI เพื่อแสดงผลแบบ Real-time
         if (mainWindow) {
             mainWindow.webContents.send('ffmpeg-log', log);
         }
+    });
+
+    ffmpegProcess.on('close', (code) => {
+        // อัปเดตสถานะเมื่อ FFmpeg ปิดตัว
+        if (code !== 0) {
+            const errorMsg = `FFmpeg process exited with an error code: ${code}`;
+            console.error(errorMsg);
+            // ส่งข้อความ Error ที่ชัดเจนไปที่ UI
+            if (mainWindow) {
+                mainWindow.webContents.send('streaming-status', { success: false, message: errorMsg });
+            }
+        } else {
+            const successMsg = 'FFmpeg process has stopped successfully.';
+            console.log(successMsg);
+            // ส่งข้อความสำเร็จไปที่ UI
+            if (mainWindow) {
+                mainWindow.webContents.send('streaming-status', { success: true, message: successMsg });
+            }
+        }
+        ffmpegProcess = null;
+    });
+
+    ffmpegProcess.on('error', (err) => {
+        const errorMsg = `Failed to start FFmpeg process: ${err.message}`;
+        console.error(errorMsg);
+        // ส่งข้อความ Error ที่ชัดเจนไปที่ UI
+        if (mainWindow) {
+            mainWindow.webContents.send('streaming-status', { success: false, message: errorMsg });
+        }
+        ffmpegProcess = null;
+    });
+
+    // ส่งสถานะเริ่มต้นเมื่อ Process เริ่มทำงาน
+    if (mainWindow) {
+        mainWindow.webContents.send('streaming-status', { success: true, message: 'Streaming started successfully.' });
     }
 }
 
@@ -117,19 +121,30 @@ function stopStreaming() {
 }
 
 // --- IPC Handlers (เหมือนเดิม) ---
+// --- แก้ไขในส่วนของ ipcMain.handle('ffmpeg-start', ...) ---
 ipcMain.handle('ffmpeg-start', (event, { destinations, ffmpegPath, srtInput }) => {
-    console.log('IPC event "ffmpeg-start" received.');
-    if (!destinations || destinations.length === 0 || !ffmpegPath || !srtInput) {
-        const errorMsg = 'Invalid arguments received for ffmpeg-start.';
-        console.error(errorMsg, { destinations, ffmpegPath, srtInput });
-        return { success: false, error: errorMsg };
+    // ... (โค้ด console.log เหมือนเดิม) ...
+
+    // ตรวจสอบความถูกต้องของ Input
+    const errors = [];
+    if (!ffmpegPath || typeof ffmpegPath !== 'string') {
+        errors.push('ffmpegPath is required and must be a string.');
     }
-    const commandArgs = ['-hide_banner', '-i', srtInput, '-c', 'copy'];
-    destinations.forEach(dest => {
-        commandArgs.push('-f', 'flv', dest);
-    });
-    console.log(`Executing: ${ffmpegPath} ${commandArgs.join(' ')}`);
-    manageFFmpegProcess(ffmpegPath, commandArgs);
+    if (!srtInput || typeof srtInput !== 'string') {
+        errors.push('Input stream URL (srtInput) is required and must be a string.');
+    }
+    if (!destinations || !Array.isArray(destinations) || destinations.length === 0) {
+        errors.push('At least one destination URL is required.');
+    }
+
+    if (errors.length > 0) {
+        console.error('Invalid arguments:', errors.join(', '));
+        // ส่งข้อความ Error กลับไปยัง Renderer Process
+        return { success: false, error: errors.join('. ') };
+    }
+
+    // ... (โค้ดส่วนอื่น ๆ ที่สร้าง commandArgs เหมือนเดิม) ...
+    
     return { success: true };
 });
 
