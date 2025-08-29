@@ -801,49 +801,52 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
     }, []);
 
 const startSpecificMultiOutput = useCallback(async (targetName: string) => {
+    console.log(`🚀 Starting ${targetName} stream via RTMP Server...`);
+    
+    if (appState.obsStatus !== 'connected') {
+        setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
+        return;
+    }
+    
+    if (appState.isStreaming) {
+        setModal({ type: 'alert', props: { message: 'กำลังสตรีมอยู่แล้ว', alertType: 'info' } });
+        return;
+    }
+
     if (!obs.current.identified) {
         setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อหรือยืนยันตัวตนกับ OBS โปรดเชื่อมต่อก่อน', alertType: 'error' } });
         return;
     }
 
     try {
-        // ✅ 1. สั่งให้ FFmpeg เริ่มทำงานและรอรับสัญญาณก่อน
-        let destinations: string[] = [];
-        const rtmpInput = 'rtmp://127.0.0.1/live/my-stream-key'; 
-        const ffmpegPath = 'C:\\ffmpeg\\bin\\ffmpeg.exe';
-        
-        const streamUrl = localStorage.getItem(`${targetName}-url`);
-        const streamKey = localStorage.getItem(`${targetName}-key`);
-
-        if (streamUrl && streamKey) {
-            destinations.push(`${streamUrl}${streamKey}`); 
-        } else {
-            setModal({ type: 'alert', props: { message: `ไม่พบการตั้งค่าปลายทางสำหรับ: ${targetName}`, alertType: 'error' } });
-            return;
-        }
-
-        // เราจะให้ FFmpeg เริ่มทำงานก่อน เพื่อให้มันพร้อมที่จะรับสัญญาณจาก OBS
-        await window.electronAPI.invoke('ffmpeg-start', {
-            destinations: destinations,
-            srtInput: rtmpInput, // ใช้ rtmpInput แทน
-            ffmpegPath: ffmpegPath,
+        // 🔧 ตั้งค่า OBS Stream Service ให้ส่งไป RTMP Server อัตโนมัติ
+        console.log(`Setting up OBS Stream Service for ${targetName} via RTMP Server...`);
+        await obs.current.call('SetStreamServiceSettings', {
+            streamServiceType: 'rtmp_custom',
+            streamServiceSettings: {
+                server: 'rtmp://127.0.0.1:1935/live',
+                key: 'my-stream-key'
+            }
         });
-
-        // ✅ 2. รอให้ FFmpeg มีเวลาเริ่มต้น (ประมาณ 2-3 วินาที)
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        // ✅ 3. สั่งให้ OBS เริ่มสตรีมไปยังปลายทางที่ตั้งค่าไว้ (RTMP Server)
-        console.log("Attempting to start OBS stream...");
+        
+        console.log(`OBS Stream Service configured for ${targetName}!`);
+        
+        // เริ่ม stream timer
+        startStreamTimer();
+        dispatch({ type: 'SET_STREAM_STATE', payload: true });
+        
+        // สั่งให้ OBS เริ่มสตรีม
+        console.log(`Attempting to start OBS stream for ${targetName}...`);
         await obs.current.call('StartStream');
-
-        // ✅ 4. รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
+        
+        // รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
         let isStreamActive = false;
         let attemptCount = 0;
         const maxAttempts = 10;
         const checkInterval = 1000;
 
         while (!isStreamActive && attemptCount < maxAttempts) {
-            console.log(`Checking stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
+            console.log(`Checking ${targetName} stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
             const status = await obs.current.call('GetStreamStatus');
             isStreamActive = status.outputActive;
             if (!isStreamActive) {
@@ -853,76 +856,338 @@ const startSpecificMultiOutput = useCallback(async (targetName: string) => {
         }
 
         if (!isStreamActive) {
-            console.error("OBS stream did not start after multiple attempts.");
-            setModal({ type: 'alert', props: { message: 'ไม่สามารถสั่งให้ OBS เริ่มสตรีมได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง', alertType: 'error' } });
+            console.error(`${targetName} stream did not start after multiple attempts.`);
+            dispatch({ type: 'SET_STREAM_STATE', payload: false });
+            stopStreamTimer();
+            setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง`, alertType: 'error' } });
             return;
         }
 
-        console.log("OBS stream started successfully. Now FFmpeg is running and ready.");
-        setModal({ type: 'alert', props: { message: `เริ่มสตรีมไปยัง ${targetName} สำเร็จ!`, alertType: 'success' } });
+        console.log(`${targetName} stream started successfully. RTMP Server should now relay to YouTube!`);
+        setModal({ type: 'alert', props: { message: `เริ่มสตรีม ${targetName} สำเร็จ! กำลังส่งไป YouTube ผ่าน RTMP Server`, alertType: 'success' } });
 
     } catch (error: any) {
-        console.error(`[MultiOutput] Failed to start output ${targetName}:`, error);
-        setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
+        console.error(`❌ Failed to start ${targetName} stream:`, error);
+        dispatch({ type: 'SET_STREAM_STATE', payload: false });
+        stopStreamTimer();
+        
+        let errorMessage = error.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก';
+        if (error.code === 'NOT_CONFIGURED') {
+            errorMessage = 'ยังไม่ได้ตั้งค่า Stream Service ใน OBS. กรุณาตั้งค่า Server/Key ก่อน';
+        }
+        setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้: ${errorMessage}`, alertType: 'error' } });
     }
-}, [obs.current.identified, setModal]);
+}, [appState.obsStatus, appState.isStreaming, obs, startStreamTimer, stopStreamTimer, dispatch, setModal]);
 
     const stopSpecificMultiOutput = useCallback(async (targetName: string) => {
+        console.log(`🛑 Stop ${targetName} button clicked`);
+        
         if (appState.obsStatus !== 'connected') {
             setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
             return;
         }
-        try {
-            console.log(`[MultiOutput] Attempting to stop output: ${targetName}`);
-            await obs.current.call('CallVendorRequest', {
-                vendorName: "obs-multi-rtmp",
-                requestType: "stop_output",
-                requestData: {
-                    target_name: targetName
-                }
-            });
-            setModal({ type: 'alert', props: { message: `หยุดสตรีม ${targetName} สำเร็จ!`, alertType: 'success' } });
-        } catch (error: any) {
-            console.error(`[MultiOutput] Failed to stop output ${targetName}:`, error);
-            setModal({ type: 'alert', props: { message: `ไม่สามารถหยุดสตรีม ${targetName} ได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
+
+        // ตรวจสอบว่า OBS WebSocket พร้อมใช้งาน
+        if (!obs.current || !obs.current.identified) {
+            setModal({ type: 'alert', props: { message: 'OBS WebSocket ไม่พร้อม กรุณาเชื่อมต่อใหม่', alertType: 'error' } });
+            return;
         }
-    }, [appState.obsStatus, setModal, obs]);
+
+        try {
+            // แทนที่จะใช้ Multi-RTMP Plugin ให้ใช้ Stop Stream ปกติ
+            console.log(`📱 Stopping main stream for ${targetName}...`);
+            
+            // ตรวจสอบสถานะ stream ปัจจุบัน
+            let currentStatus;
+            try {
+                currentStatus = await obs.current.call('GetStreamStatus');
+                console.log(`📊 Current stream status for ${targetName}:`, {
+                    outputActive: currentStatus?.outputActive,
+                    outputReconnecting: currentStatus?.outputReconnecting
+                });
+            } catch (statusError: any) {
+                console.warn(`⚠️ Could not get stream status for ${targetName}:`, statusError.message);
+            }
+
+            // ถ้าไม่ได้สตรีมอยู่
+            if (currentStatus && !currentStatus.outputActive) {
+                console.log(`ℹ️ ${targetName} stream is already stopped`);
+                dispatch({ type: 'SET_STREAM_STATE', payload: false });
+                stopStreamTimer();
+                setModal({ type: 'alert', props: { message: `${targetName} ไม่ได้สตรีมอยู่ในขณะนี้`, alertType: 'info' } });
+                return;
+            }
+
+            // ส่งคำสั่งหยุด stream
+            console.log(`🛑 Sending stop stream command for ${targetName}...`);
+            await obs.current.call('StopStream');
+            
+            // รอและตรวจสอบว่าหยุดจริง
+            let stopConfirmed = false;
+            let attempts = 0;
+            const maxAttempts = 8;
+            
+            while (!stopConfirmed && attempts < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 400));
+                
+                try {
+                    const verifyStatus = await obs.current.call('GetStreamStatus');
+                    console.log(`🔍 ${targetName} verification attempt ${attempts + 1}:`, {
+                        outputActive: verifyStatus?.outputActive
+                    });
+                    
+                    if (!verifyStatus.outputActive) {
+                        console.log(`✅ ${targetName} stream confirmed stopped`);
+                        stopConfirmed = true;
+                        break;
+                    }
+                } catch (verifyError: any) {
+                    console.log(`⚠️ ${targetName} verification attempt ${attempts + 1} failed:`, verifyError.message);
+                    if (attempts >= 3) {
+                        console.log(`🤷 Cannot verify ${targetName} status, assuming stopped`);
+                        stopConfirmed = true;
+                        break;
+                    }
+                }
+                attempts++;
+            }
+
+            // อัปเดต UI state
+            dispatch({ type: 'SET_STREAM_STATE', payload: false });
+            stopStreamTimer();
+            
+            if (stopConfirmed) {
+                console.log(`🎉 ${targetName} stopped successfully`);
+                setModal({ type: 'alert', props: { message: `หยุดสตรีม ${targetName} สำเร็จ!`, alertType: 'success' } });
+            } else {
+                console.log(`⚠️ ${targetName} stop command sent but could not verify`);
+                setModal({ type: 'alert', props: { message: `ส่งคำสั่งหยุด ${targetName} แล้ว แต่ไม่สามารถยืนยันได้ กรุณาตรวจสอบ OBS`, alertType: 'warning' } });
+            }
+
+        } catch (error: any) {
+            console.error(`❌ Error stopping ${targetName}:`, {
+                message: error.message,
+                code: error.code
+            });
+            
+            // อัปเดต UI state เพื่อป้องกันการติดค้าง
+            dispatch({ type: 'SET_STREAM_STATE', payload: false });
+            stopStreamTimer();
+            
+            let userMessage = `เกิดข้อผิดพลาดขณะหยุด ${targetName}`;
+            let alertType: 'error' | 'warning' = 'error';
+            
+            if (error.code === 'NOT_STREAMING') {
+                userMessage = `${targetName} ไม่ได้สตรีมอยู่ (อัปเดท UI แล้ว)`;
+                alertType = 'warning';
+            } else if (error.message?.includes('Connection') || error.message?.includes('WebSocket')) {
+                userMessage = `การเชื่อมต่อ OBS หลุด แต่อัปเดท UI แล้ว (อาจหยุด ${targetName} แล้ว)`;
+                alertType = 'warning';
+            } else if (error.message?.includes('timeout')) {
+                userMessage = `หมดเวลารอ OBS ตอบกลับ แต่อัปเดท UI แล้ว (${targetName})`;
+                alertType = 'warning';
+            } else {
+                userMessage = `ข้อผิดพลาด ${targetName}: ${error.message || 'ไม่ทราบสาเหตุ'} (อัปเดท UI แล้ว)`;
+                alertType = 'warning';
+            }
+            
+            setModal({ type: 'alert', props: { message: userMessage, alertType } });
+        }
+    }, [appState.obsStatus, setModal, obs, dispatch, stopStreamTimer]);
 
     const startAllMultiOutputs = useCallback(async () => {
+        console.log('🚀 Starting all outputs via RTMP Server...');
+        
         if (appState.obsStatus !== 'connected') {
             setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
             return;
         }
-        try {
-            console.log("[MultiOutput] Attempting to start all outputs.");
-            await obs.current.call('CallVendorRequest', {
-                vendorName: "obs-multi-rtmp",
-                requestType: "start_all_outputs"
-            });
-            setModal({ type: 'alert', props: { message: 'เริ่มสตรีมทั้งหมดสำเร็จ!', alertType: 'success' } });
-        } catch (error: any) {
-            console.error("[MultiOutput] Failed to start all outputs:", error);
-            setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีมทั้งหมดได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
+        
+        if (appState.isStreaming) {
+            setModal({ type: 'alert', props: { message: 'กำลังสตรีมอยู่แล้ว', alertType: 'info' } });
+            return;
         }
-    }, [appState.obsStatus, setModal, obs]);
+
+        if (!obs.current.identified) {
+            setModal({ type: 'alert', props: { message: 'OBS WebSocket ไม่พร้อม กรุณาเชื่อมต่อใหม่', alertType: 'error' } });
+            return;
+        }
+
+        try {
+            // 🔧 ตั้งค่า OBS Stream Service ให้ส่งไป RTMP Server อัตโนมัติ
+            console.log('Setting up OBS Stream Service for all outputs via RTMP Server...');
+            await obs.current.call('SetStreamServiceSettings', {
+                streamServiceType: 'rtmp_custom',
+                streamServiceSettings: {
+                    server: 'rtmp://127.0.0.1:1935/live',
+                    key: 'my-stream-key'
+                }
+            });
+            
+            console.log('OBS Stream Service configured for all outputs!');
+            
+            // เริ่ม stream timer
+            startStreamTimer();
+            dispatch({ type: 'SET_STREAM_STATE', payload: true });
+            
+            // สั่งให้ OBS เริ่มสตรีม
+            console.log('Attempting to start OBS stream for all outputs...');
+            await obs.current.call('StartStream');
+            
+            // รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
+            let isStreamActive = false;
+            let attemptCount = 0;
+            const maxAttempts = 10;
+            const checkInterval = 1000;
+
+            while (!isStreamActive && attemptCount < maxAttempts) {
+                console.log(`Checking all outputs stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
+                const status = await obs.current.call('GetStreamStatus');
+                isStreamActive = status.outputActive;
+                if (!isStreamActive) {
+                    await new Promise(resolve => setTimeout(resolve, checkInterval));
+                }
+                attemptCount++;
+            }
+
+            if (!isStreamActive) {
+                console.error('All outputs stream did not start after multiple attempts.');
+                dispatch({ type: 'SET_STREAM_STATE', payload: false });
+                stopStreamTimer();
+                setModal({ type: 'alert', props: { message: 'ไม่สามารถเริ่มสตรีมทั้งหมดได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง', alertType: 'error' } });
+                return;
+            }
+
+            console.log('All outputs stream started successfully. RTMP Server should now relay to YouTube!');
+            setModal({ type: 'alert', props: { message: 'เริ่มสตรีมทั้งหมดสำเร็จ! กำลังส่งไป YouTube ผ่าน RTMP Server', alertType: 'success' } });
+
+        } catch (error: any) {
+            console.error('❌ Failed to start all outputs:', error);
+            dispatch({ type: 'SET_STREAM_STATE', payload: false });
+            stopStreamTimer();
+            
+            let errorMessage = error.message || 'เกิดข้อผิดพลาดที่ไม่รู้จัก';
+            if (error.code === 'NOT_CONFIGURED') {
+                errorMessage = 'ยังไม่ได้ตั้งค่า Stream Service ใน OBS. กรุณาตั้งค่า Server/Key ก่อน';
+            }
+            setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีมทั้งหมดได้: ${errorMessage}`, alertType: 'error' } });
+        }
+    }, [appState.obsStatus, appState.isStreaming, obs, startStreamTimer, stopStreamTimer, dispatch, setModal]);
 
     const stopAllMultiOutputs = useCallback(async () => {
+        console.log('🛑 Stop All Multi-Outputs button clicked');
+        
         if (appState.obsStatus !== 'connected') {
             setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
             return;
         }
-        try {
-            console.log("[MultiOutput] Attempting to stop all outputs.");
-            await obs.current.call('CallVendorRequest', {
-                vendorName: "obs-multi-rtmp",
-                requestType: "stop_all_outputs"
-            });
-            setModal({ type: 'alert', props: { message: 'หยุดสตรีมทั้งหมดสำเร็จ!', alertType: 'success' } });
-        } catch (error: any) {
-            console.error("[MultiOutput] Failed to stop all outputs:", error);
-            setModal({ type: 'alert', props: { message: `ไม่สามารถหยุดสตรีมทั้งหมดได้: ${error.message || 'เกิดข้อผิดพลาด'}`, alertType: 'error' } });
+
+        if (!obs.current || !obs.current.identified) {
+            setModal({ type: 'alert', props: { message: 'OBS WebSocket ไม่พร้อม กรุณาเชื่อมต่อใหม่', alertType: 'error' } });
+            return;
         }
-    }, [appState.obsStatus, setModal, obs]);
+
+        try {
+            // แทนที่จะใช้ Multi-RTMP Plugin ให้ใช้ Stop Stream ปกติ
+            console.log('📱 Stopping main stream for all outputs...');
+            
+            // ตรวจสอบสถานะ stream ปัจจุบัน
+            let currentStatus;
+            try {
+                currentStatus = await obs.current.call('GetStreamStatus');
+                console.log('📊 Current stream status for all outputs:', {
+                    outputActive: currentStatus?.outputActive,
+                    outputReconnecting: currentStatus?.outputReconnecting
+                });
+            } catch (statusError: any) {
+                console.warn('⚠️ Could not get stream status for all outputs:', statusError.message);
+            }
+
+            // ถ้าไม่ได้สตรีมอยู่
+            if (currentStatus && !currentStatus.outputActive) {
+                console.log('ℹ️ All outputs are already stopped');
+                dispatch({ type: 'SET_STREAM_STATE', payload: false });
+                stopStreamTimer();
+                setModal({ type: 'alert', props: { message: 'ไม่ได้สตรีมอยู่ในขณะนี้', alertType: 'info' } });
+                return;
+            }
+
+            // ส่งคำสั่งหยุด stream
+            console.log('🛑 Sending stop stream command for all outputs...');
+            await obs.current.call('StopStream');
+            
+            // รอและตรวจสอบว่าหยุดจริง
+            let stopConfirmed = false;
+            let attempts = 0;
+            const maxAttempts = 10;
+            
+            while (!stopConfirmed && attempts < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 400));
+                
+                try {
+                    const verifyStatus = await obs.current.call('GetStreamStatus');
+                    console.log(`🔍 All outputs verification attempt ${attempts + 1}:`, {
+                        outputActive: verifyStatus?.outputActive
+                    });
+                    
+                    if (!verifyStatus.outputActive) {
+                        console.log('✅ All outputs confirmed stopped');
+                        stopConfirmed = true;
+                        break;
+                    }
+                } catch (verifyError: any) {
+                    console.log(`⚠️ All outputs verification attempt ${attempts + 1} failed:`, verifyError.message);
+                    if (attempts >= 4) {
+                        console.log('🤷 Cannot verify all outputs status, assuming stopped');
+                        stopConfirmed = true;
+                        break;
+                    }
+                }
+                attempts++;
+            }
+
+            // อัปเดต UI state
+            dispatch({ type: 'SET_STREAM_STATE', payload: false });
+            stopStreamTimer();
+            
+            if (stopConfirmed) {
+                console.log('🎉 All outputs stopped successfully');
+                setModal({ type: 'alert', props: { message: 'หยุดสตรีมทั้งหมดสำเร็จ!', alertType: 'success' } });
+            } else {
+                console.log('⚠️ Stop all outputs command sent but could not verify');
+                setModal({ type: 'alert', props: { message: 'ส่งคำสั่งหยุดทั้งหมดแล้ว แต่ไม่สามารถยืนยันได้ กรุณาตรวจสอบ OBS', alertType: 'warning' } });
+            }
+
+        } catch (error: any) {
+            console.error('❌ Error stopping all outputs:', {
+                message: error.message,
+                code: error.code
+            });
+            
+            // อัปเดต UI state เพื่อป้องกันการติดค้าง
+            dispatch({ type: 'SET_STREAM_STATE', payload: false });
+            stopStreamTimer();
+            
+            let userMessage = 'เกิดข้อผิดพลาดขณะหยุดสตรีมทั้งหมด';
+            let alertType: 'error' | 'warning' = 'error';
+            
+            if (error.code === 'NOT_STREAMING') {
+                userMessage = 'ไม่ได้สตรีมอยู่ (อัปเดท UI แล้ว)';
+                alertType = 'warning';
+            } else if (error.message?.includes('Connection') || error.message?.includes('WebSocket')) {
+                userMessage = 'การเชื่อมต่อ OBS หลุด แต่อัปเดท UI แล้ว (อาจหยุดสตรีมแล้ว)';
+                alertType = 'warning';
+            } else if (error.message?.includes('timeout')) {
+                userMessage = 'หมดเวลารอ OBS ตอบกลับ แต่อัปเดท UI แล้ว';
+                alertType = 'warning';
+            } else {
+                userMessage = `ข้อผิดพลาด: ${error.message || 'ไม่ทราบสาเหตุ'} (อัปเดท UI แล้ว)`;
+                alertType = 'warning';
+            }
+            
+            setModal({ type: 'alert', props: { message: userMessage, alertType } });
+        }
+    }, [appState.obsStatus, setModal, obs, dispatch, stopStreamTimer]);
 
 
 const handleStartStream = async () => {
@@ -936,6 +1201,18 @@ const handleStartStream = async () => {
     }
 
     try {
+        // 🔧 ตั้งค่า OBS Stream Service ให้ส่งไป RTMP Server อัตโนมัติ
+        console.log("Setting up OBS Stream Service for RTMP Server...");
+        await obs.current.call('SetStreamServiceSettings', {
+            streamServiceType: 'rtmp_custom',
+            streamServiceSettings: {
+                server: 'rtmp://127.0.0.1:1935/live',
+                key: 'my-stream-key'
+            }
+        });
+        
+        console.log("OBS Stream Service configured successfully!");
+        
         const streamConfig = {
             twitchUrl: localStorage.getItem('twitch-key') ? 'rtmp://live-sjc.twitch.tv/app/' + localStorage.getItem('twitch-key') : '',
             youtubeUrl: localStorage.getItem('youtube-key') ? 'rtmp://a.rtmp.youtube.com/live2/' + localStorage.getItem('youtube-key') : ''
@@ -972,17 +1249,8 @@ const handleStartStream = async () => {
             return;
         }
 
-        console.log("OBS stream started successfully. Now starting FFmpeg.");
-
-        // 3. สั่งให้ FFmpeg เริ่มทำงานและรอรับสัญญาณจาก OBS
-        await window.electronAPI.invoke('ffmpeg-start', {
-            destinations: destinations,
-            //srtInput: srtInput,
-            rtInput: rtmpInput, 
-            ffmpegPath: ffmpegPath,
-        });
-
-        setModal({ type: 'alert', props: { message: 'เริ่มสตรีมสำเร็จแล้ว!', alertType: 'success' } });
+        console.log("OBS stream started successfully. RTMP Server should now relay to YouTube!");
+        setModal({ type: 'alert', props: { message: 'เริ่มสตรีมสำเร็จแล้ว! กำลังส่งไป YouTube ผ่าน RTMP Server', alertType: 'success' } });
 
     } catch (error: any) {
         console.error("❌ Failed to start stream:", error);
@@ -994,12 +1262,133 @@ const handleStartStream = async () => {
     }
 };
     const handleStopStream = useCallback(async () => {
-        try {
-            await obs.current.call('StopStream');
-        } catch (error: any) {
-            setModal({ type: 'alert', props: { message: error.message, alertType: 'error' } });
+        console.log('🛑 Stop Stream button clicked');
+        
+        // ตรวจสอบการเชื่อมต่อ OBS
+        if (appState.obsStatus !== 'connected') {
+            console.error('❌ OBS not connected');
+            setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
+            return;
         }
-    }, [setModal]);
+
+        // ตรวจสอบว่า OBS WebSocket object พร้อมใช้งาน
+        if (!obs.current || !obs.current.identified) {
+            console.error('❌ OBS WebSocket not ready');
+            setModal({ type: 'alert', props: { message: 'OBS WebSocket ไม่พร้อม กรุณาเชื่อมต่อใหม่', alertType: 'error' } });
+            return;
+        }
+
+        console.log('✅ Starting stop stream process...');
+        
+        try {
+            // 1. ตรวจสอบสถานะปัจจุบันของ stream
+            let currentStatus = null;
+            try {
+                console.log('🔍 Checking current stream status...');
+                currentStatus = await obs.current.call('GetStreamStatus');
+                console.log('📊 Current stream status:', {
+                    outputActive: currentStatus?.outputActive,
+                    outputReconnecting: currentStatus?.outputReconnecting,
+                    outputTimecode: currentStatus?.outputTimecode
+                });
+            } catch (statusError: any) {
+                console.warn('⚠️ Could not get stream status:', statusError.message);
+                // ต่อไปด้วยการพยายามหยุด stream ยังไง
+            }
+
+            // 2. ตรวจสอบว่าจำเป็นต้องหยุดหรือไม่
+            if (currentStatus && !currentStatus.outputActive) {
+                console.log('ℹ️ Stream is already stopped, updating UI state');
+                dispatch({ type: 'SET_STREAM_STATE', payload: false });
+                stopStreamTimer();
+                setModal({ type: 'alert', props: { message: 'สตรีมหยุดอยู่แล้ว (อัพเดทสถานะ UI)', alertType: 'info' } });
+                return;
+            }
+
+            // 3. ส่งคำสั่งหยุด stream
+            console.log('🛑 Sending stop stream command to OBS...');
+            const stopResult = await obs.current.call('StopStream');
+            console.log('📤 Stop stream command sent:', stopResult);
+            
+            // 4. รอและตรวจสอบว่าหยุดจริงแล้ว
+            console.log('⏳ Waiting for stream to stop completely...');
+            let stopConfirmed = false;
+            let verificationAttempts = 0;
+            const maxVerificationAttempts = 10; // เพิ่มจาก 5 เป็น 10
+            
+            while (!stopConfirmed && verificationAttempts < maxVerificationAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 300)); // ลดเวลารอจาก 500ms เป็น 300ms
+                
+                try {
+                    const verifyStatus = await obs.current.call('GetStreamStatus');
+                    console.log(`🔍 Verification attempt ${verificationAttempts + 1}:`, {
+                        outputActive: verifyStatus?.outputActive,
+                        outputReconnecting: verifyStatus?.outputReconnecting
+                    });
+                    
+                    if (!verifyStatus.outputActive) {
+                        console.log('✅ Stream confirmed stopped');
+                        stopConfirmed = true;
+                        break;
+                    }
+                } catch (verifyError: any) {
+                    console.log(`⚠️ Verification attempt ${verificationAttempts + 1} failed:`, verifyError.message);
+                    // ถ้าตรวจสอบไม่ได้หลายครั้ง ถือว่าหยุดแล้ว
+                    if (verificationAttempts >= 3) {
+                        console.log('🤷 Cannot verify status multiple times, assuming stopped');
+                        stopConfirmed = true;
+                        break;
+                    }
+                }
+                verificationAttempts++;
+            }
+            
+            // 5. อัพเดท UI state และแจ้งผลลัพธ์
+            dispatch({ type: 'SET_STREAM_STATE', payload: false });
+            stopStreamTimer();
+            
+            if (stopConfirmed) {
+                console.log('🎉 Stream stopped successfully');
+                setModal({ type: 'alert', props: { message: 'หยุดสตรีมสำเร็จแล้ว!', alertType: 'success' } });
+            } else {
+                console.log('⚠️ Stop command sent but could not verify completion');
+                setModal({ type: 'alert', props: { message: 'ส่งคำสั่งหยุดแล้ว แต่ไม่สามารถยืนยันได้ กรุณาตรวจสอบ OBS', alertType: 'warning' } });
+            }
+            
+        } catch (error: any) {
+            console.error('❌ Error during stop stream process:', {
+                message: error.message,
+                code: error.code,
+                stack: error.stack
+            });
+            
+            // อัพเดท UI state เพื่อป้องกันการติดค้าง
+            dispatch({ type: 'SET_STREAM_STATE', payload: false });
+            stopStreamTimer();
+            
+            // จัดการข้อผิดพลาดตามประเภท
+            let userMessage = 'เกิดข้อผิดพลาดขณะหยุดสตรีม';
+            let alertType: 'error' | 'warning' = 'error';
+            
+            if (error.code === 'REQUEST_NOT_READY') {
+                userMessage = 'OBS ยังไม่พร้อม กรุณารอสักครู่แล้วลองใหม่';
+            } else if (error.code === 'NOT_STREAMING') {
+                userMessage = 'ไม่มีการสตรีมที่ต้องหยุด (อัพเดท UI แล้ว)';
+                alertType = 'warning';
+            } else if (error.message?.includes('Connection') || error.message?.includes('WebSocket')) {
+                userMessage = 'การเชื่อมต่อ OBS หลุด แต่อัพเดท UI แล้ว (อาจหยุดสตรีมแล้ว)';
+                alertType = 'warning';
+            } else if (error.message?.includes('timeout')) {
+                userMessage = 'หมดเวลารอ OBS ตอบกลับ แต่อัพเดท UI แล้ว';
+                alertType = 'warning';
+            } else {
+                userMessage = `ข้อผิดพลาด: ${error.message || 'ไม่ทราบสาเหตุ'} (อัพเดท UI แล้ว)`;
+                alertType = 'warning';
+            }
+            
+            setModal({ type: 'alert', props: { message: userMessage, alertType } });
+        }
+    }, [appState.obsStatus, setModal, dispatch, stopStreamTimer]);
 
     const handleCheckStreamSettings = useCallback(async () => {
         if (appState.obsStatus !== 'connected') return;
@@ -2020,29 +2409,16 @@ const handleSave = async () => {
     localStorage.setItem(`${platform}-key`, key);
 
     try {
+        // บันทึกการตั้งค่าเพิ่มเติมสำหรับ Facebook (ถ้ามี)
         if (platform === 'facebook') {
-            // นี่คือส่วนที่เคยมีปัญหา เพราะไม่มี 'obs-multi-rtmp' plugin ในโค้ด
-            // แต่เนื่องจากโค้ดที่คุณส่งมา มีฟังก์ชัน multi-output แล้ว
-            // คุณสามารถใช้ฟังก์ชันเหล่านั้นได้
-            await obs.call('CallVendorRequest', {
-                vendorName: "obs-multi-rtmp",
-                requestType: "update_target",
-                requestData: {
-                    target_name: platform, // ใช้ชื่อ platform เป็น target name
-                    // ส่งค่าการตั้งค่าไปให้ plugin
-                    url: url,
-                    key: key,
-                    video_bitrate: parseInt(videoBitrate),
-                    audio_bitrate: parseInt(audioBitrate),
-                    encoder: encoder,
-                    preset: preset
-                }
-            });
+            localStorage.setItem('facebook-videoBitrate', videoBitrate);
+            localStorage.setItem('facebook-audioBitrate', audioBitrate);
+            localStorage.setItem('facebook-encoder', encoder);
+            localStorage.setItem('facebook-preset', preset);
         }
         onAlert({ message: `บันทึกค่าสำหรับ ${platform} สำเร็จ!`, alertType: 'success' });
 
     } catch (error: any) {
-
         onAlert({ message: `บันทึกค่าสำหรับ ${platform} ล้มเหลว: ${error.message}`, alertType: 'error' });
     }
 };

@@ -10,7 +10,9 @@
     "tauri": "tauri",
     "electron-build": "electron-builder --windows --publish never",
     "dist": "electron-builder --mac --windows",
-    "electron-dev": "concurrently \"npm run dev\" \"wait-on dist/index.html && electron .\""
+    "electron-dev": "concurrently \"npm run dev\" \"wait-on dist/index.html && electron .\"",
+    "start-all": "concurrently \"cd my-rtmp-server && node server.js\" \"wait-on http://127.0.0.1:8000 && npm run electron-dev\" --names \"RTMP,ELECTRON\" --prefix-colors \"green,blue\" --kill-others-on-fail",
+    "start-streaming": "node startup.js"
   },
   "dependencies": {
     "@tauri-apps/plugin-opener": "^2",
