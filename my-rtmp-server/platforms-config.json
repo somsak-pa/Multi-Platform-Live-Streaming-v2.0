@@ -1,0 +1,58 @@
+{
+  "youtube": {
+    "name": "YouTube",
+    "rtmpUrl": "rtmp://a.rtmp.youtube.com/live2/",
+    "icon": "🔴",
+    "enabled": true,
+    "description": "YouTube Live streaming platform"
+  },
+  "facebook": {
+    "name": "Facebook",
+    "rtmpUrl": "rtmp://live-api-s.facebook.com:443/rtmp/",
+    "icon": "🔵",
+    "enabled": true,
+    "description": "Facebook Live streaming platform"
+  },
+  "twitch": {
+    "name": "Twitch",
+    "rtmpUrl": "rtmp://live.twitch.tv/app/",
+    "icon": "🟣",
+    "enabled": true,
+    "description": "Twitch live streaming platform"
+  },
+  "tiktok": {
+    "name": "TikTok",
+    "rtmpUrl": "rtmp://live.tiktok.com/live/",
+    "icon": "⚫",
+    "enabled": false,
+    "description": "TikTok Live (experimental)"
+  },
+  "instagram": {
+    "name": "Instagram",
+    "rtmpUrl": "rtmp://live.instagram.com/rtmp/",
+    "icon": "🟡",
+    "enabled": false,
+    "description": "Instagram Live (experimental)"
+  },
+  "linkedin": {
+    "name": "LinkedIn",
+    "rtmpUrl": "rtmp://1-a.rtmp.linkedin.com/live/",
+    "icon": "🔷",
+    "enabled": false,
+    "description": "LinkedIn Live streaming"
+  },
+  "custom1": {
+    "name": "Custom Platform 1",
+    "rtmpUrl": "rtmp://your-custom-server.com/live/",
+    "icon": "🟢",
+    "enabled": false,
+    "description": "Custom RTMP server 1"
+  },
+  "custom2": {
+    "name": "Custom Platform 2",
+    "rtmpUrl": "rtmp://another-server.com/stream/",
+    "icon": "🟠",
+    "enabled": false,
+    "description": "Custom RTMP server 2"
+  }
+}

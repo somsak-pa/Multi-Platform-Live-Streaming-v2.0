@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 ตั้งค่า Stream Keys</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .platform-group {
+            margin-bottom: 25px;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        .platform-label {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .platform-icon {
+            font-size: 1.5em;
+            margin-right: 10px;
+        }
+
+        .input-container {
+            position: relative;
+        }
+
+        .stream-input {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e1e8ed;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .stream-input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .stream-input::placeholder {
+            color: #adb5bd;
+        }
+
+        .optional-text {
+            font-size: 0.9em;
+            color: #28a745;
+            margin-left: 10px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+            display: none;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .help-text {
+            background: #e7f3ff;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            border-left: 4px solid #0dcaf0;
+        }
+
+        .help-links {
+            margin-top: 10px;
+        }
+
+        .help-links a {
+            color: #0d6efd;
+            text-decoration: none;
+            margin-right: 15px;
+            font-size: 0.9em;
+        }
+
+        .help-links a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 ตั้งค่า Stream Keys</h1>
+            <p>ใส่ Stream Key ของแต่ละแพลตฟอร์มที่คุณต้องการสตรีม</p>
+        </div>
+
+        <div class="help-text">
+            💡 <strong>คำแนะนำ:</strong> ใส่เฉพาะ Stream Key ของแพลตฟอร์มที่คุณใช้ แพลตฟอร์มที่ไม่ใช้สามารถเว้นว่างได้
+            <div class="help-links">
+                <a href="https://studio.youtube.com" target="_blank">📺 รับ YouTube Key</a>
+                <a href="https://www.facebook.com/live/create" target="_blank">📘 รับ Facebook Key</a>
+                <a href="https://dashboard.twitch.tv/settings/stream" target="_blank">🟣 รับ Twitch Key</a>
+            </div>
+        </div>
+
+        <div class="success-message" id="successMessage">
+            ✅ บันทึกการตั้งค่าสำเร็จ! คุณสามารถเริ่มสตรีมได้แล้ว
+        </div>
+
+        <form id="streamConfigForm">
+            <div class="platform-group">
+                <div class="platform-label">
+                    <span class="platform-icon">🔴</span>
+                    YouTube
+                </div>
+                <div class="input-container">
+                    <input type="text" class="stream-input" name="youtube" placeholder="xxxx-yyyy-zzzz-aaaa">
+                </div>
+            </div>
+
+            <div class="platform-group">
+                <div class="platform-label">
+                    <span class="platform-icon">🔵</span>
+                    Facebook
+                    <span class="optional-text">(ไม่บังคับ)</span>
+                </div>
+                <div class="input-container">
+                    <input type="text" class="stream-input" name="facebook" placeholder="abcd-efgh-ijkl-mnop">
+                </div>
+            </div>
+
+            <div class="platform-group">
+                <div class="platform-label">
+                    <span class="platform-icon">🟣</span>
+                    Twitch
+                    <span class="optional-text">(ไม่บังคับ)</span>
+                </div>
+                <div class="input-container">
+                    <input type="text" class="stream-input" name="twitch" placeholder="live_123456789_abcdefghijklmnop">
+                </div>
+            </div>
+
+            <div class="platform-group">
+                <div class="platform-label">
+                    <span class="platform-icon">⚫</span>
+                    TikTok
+                    <span class="optional-text">(ไม่บังคับ)</span>
+                </div>
+                <div class="input-container">
+                    <input type="text" class="stream-input" name="tiktok" placeholder="your-tiktok-stream-key">
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button type="button" class="btn btn-secondary" onclick="clearForm()">🗑️ เคลียร์ทั้งหมด</button>
+                <button type="submit" class="btn btn-primary">💾 บันทึกและเริ่มใช้งาน</button>
+            </div>
+        </form>
+
+        <div style="text-align: center; margin-top: 20px; color: #666; font-size: 0.9em;">
+            หลังจากบันทึกแล้ว ให้เปิด OBS และตั้งค่า:<br>
+            <strong>Server:</strong> rtmp://127.0.0.1:1935/live<br>
+            <strong>Stream Key:</strong> my-stream-key
+        </div>
+    </div>
+
+    <script>
+        // โหลดข้อมูลเก่า (ถ้ามี)
+        function loadExistingConfig() {
+            const saved = localStorage.getItem('streamConfig');
+            if (saved) {
+                const config = JSON.parse(saved);
+                Object.keys(config).forEach(platform => {
+                    const input = document.querySelector(`input[name="${platform}"]`);
+                    if (input && config[platform]) {
+                        input.value = config[platform];
+                    }
+                });
+            }
+        }
+
+        // บันทึกการตั้งค่า
+        document.getElementById('streamConfigForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const config = {
+                myuser: {
+                    name: "My Streamer",
+                    youtube: formData.get('youtube') || "",
+                    facebook: formData.get('facebook') || "",
+                    twitch: formData.get('twitch') || "",
+                    tiktok: formData.get('tiktok') || "",
+                    instagram: "",
+                    linkedin: "",
+                    custom1: "",
+                    custom2: ""
+                }
+            };
+
+            try {
+                // บันทึกลง localStorage
+                localStorage.setItem('streamConfig', JSON.stringify(config.myuser));
+                
+                // ส่งข้อมูลไปยัง server
+                const response = await fetch('/save-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(config)
+                });
+
+                if (response.ok) {
+                    showSuccess();
+                } else {
+                    // ถ้า server ไม่ตอบสนอง ให้ดาวน์โหลดไฟล์แทน
+                    downloadConfig(config);
+                    showSuccess();
+                }
+            } catch (error) {
+                // ถ้าเกิดข้อผิดพลาด ให้ดาวน์โหลดไฟล์
+                downloadConfig(config);
+                showSuccess();
+            }
+        });
+
+        // แสดงข้อความสำเร็จ
+        function showSuccess() {
+            const message = document.getElementById('successMessage');
+            message.style.display = 'block';
+            
+            setTimeout(() => {
+                message.style.display = 'none';
+            }, 5000);
+        }
+
+        // ดาวน์โหลดไฟล์ config
+        function downloadConfig(config) {
+            const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'user-stream-keys.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // เคลียร์ฟอร์ม
+        function clearForm() {
+            document.getElementById('streamConfigForm').reset();
+            localStorage.removeItem('streamConfig');
+        }
+
+        // โหลดข้อมูลเมื่อเปิดหน้า
+        window.addEventListener('load', loadExistingConfig);
+    </script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+{
+  "user1": {
+    "name": "User 1 - Content Creator",
+    "email": "user1@example.com",
+    "youtube": "your-youtube-key-here",
+    "facebook": "your-facebook-key-here",
+    "twitch": "your-twitch-key-here",
+    "tiktok": "",
+    "instagram": "",
+    "linkedin": "",
+    "custom1": "",
+    "custom2": ""
+  },
+  "user2": {
+    "name": "User 2 - Streamer",
+    "email": "user2@example.com",
+    "youtube": "",
+    "facebook": "",
+    "twitch": "",
+    "tiktok": "",
+    "instagram": "",
+    "linkedin": "",
+    "custom1": "",
+    "custom2": ""
+  },
+  "demo": {
+    "name": "Demo User",
+    "email": "demo@example.com",
+    "youtube": "demo-youtube-key",
+    "facebook": "",
+    "twitch": "",
+    "tiktok": "",
+    "instagram": "",
+    "linkedin": "",
+    "custom1": "",
+    "custom2": ""
+  }
+}

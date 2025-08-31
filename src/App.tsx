@@ -801,15 +801,10 @@ const fetchChatToken = useCallback(async (accessToken: string) => {
     }, []);
 
 const startSpecificMultiOutput = useCallback(async (targetName: string) => {
-    console.log(`🚀 Starting ${targetName} stream via RTMP Server...`);
+    console.log(`🚀 Starting ${targetName} stream via Multi-Platform RTMP Server...`);
     
     if (appState.obsStatus !== 'connected') {
         setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
-        return;
-    }
-    
-    if (appState.isStreaming) {
-        setModal({ type: 'alert', props: { message: 'กำลังสตรีมอยู่แล้ว', alertType: 'info' } });
         return;
     }
 
@@ -819,52 +814,69 @@ const startSpecificMultiOutput = useCallback(async (targetName: string) => {
     }
 
     try {
-        // 🔧 ตั้งค่า OBS Stream Service ให้ส่งไป RTMP Server อัตโนมัติ
-        console.log(`Setting up OBS Stream Service for ${targetName} via RTMP Server...`);
-        await obs.current.call('SetStreamServiceSettings', {
-            streamServiceType: 'rtmp_custom',
-            streamServiceSettings: {
-                server: 'rtmp://127.0.0.1:1935/live',
-                key: 'my-stream-key'
-            }
-        });
-        
-        console.log(`OBS Stream Service configured for ${targetName}!`);
-        
-        // เริ่ม stream timer
-        startStreamTimer();
-        dispatch({ type: 'SET_STREAM_STATE', payload: true });
-        
-        // สั่งให้ OBS เริ่มสตรีม
-        console.log(`Attempting to start OBS stream for ${targetName}...`);
-        await obs.current.call('StartStream');
-        
-        // รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
-        let isStreamActive = false;
-        let attemptCount = 0;
-        const maxAttempts = 10;
-        const checkInterval = 1000;
+        // 🔧 ตรวจสอบสถานะการสตรีมก่อนตั้งค่า Stream Service
+        let currentStatus;
+        try {
+            currentStatus = await obs.current.call('GetStreamStatus');
+        } catch (statusError) {
+            console.warn('Could not get stream status:', statusError);
+        }
 
-        while (!isStreamActive && attemptCount < maxAttempts) {
-            console.log(`Checking ${targetName} stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
-            const status = await obs.current.call('GetStreamStatus');
-            isStreamActive = status.outputActive;
+        // ตั้งค่า Stream Service เฉพาะเมื่อไม่ได้สตรีมอยู่
+        if (!currentStatus || !currentStatus.outputActive) {
+            console.log(`Setting up OBS Stream Service for ${targetName} via Multi-Platform RTMP Server...`);
+            
+            // ใช้ Multi-Platform RTMP Server
+            await obs.current.call('SetStreamServiceSettings', {
+                streamServiceType: 'rtmp_custom',
+                streamServiceSettings: {
+                    server: 'rtmp://127.0.0.1:1935/live',
+                    key: 'my-stream-key'
+                }
+            });
+            console.log(`OBS Stream Service configured for ${targetName} via Multi-Platform RTMP Server!`);
+        } else {
+            console.log(`${targetName}: Stream is already active, skipping service configuration`);
+        }
+        
+        // เริ่มสตรีมเฉพาะเมื่อยังไม่ได้สตรีมอยู่
+        if (!currentStatus || !currentStatus.outputActive) {
+            startStreamTimer();
+            dispatch({ type: 'SET_STREAM_STATE', payload: true });
+            
+            // สั่งให้ OBS เริ่มสตรีม
+            console.log(`Attempting to start OBS stream for ${targetName}...`);
+            await obs.current.call('StartStream');
+            
+            // รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
+            let isStreamActive = false;
+            let attemptCount = 0;
+            const maxAttempts = 10;
+            const checkInterval = 1000;
+
+            while (!isStreamActive && attemptCount < maxAttempts) {
+                console.log(`Checking ${targetName} stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
+                const status = await obs.current.call('GetStreamStatus');
+                isStreamActive = status.outputActive;
+                if (!isStreamActive) {
+                    await new Promise(resolve => setTimeout(resolve, checkInterval));
+                }
+                attemptCount++;
+            }
+
             if (!isStreamActive) {
-                await new Promise(resolve => setTimeout(resolve, checkInterval));
+                console.error(`${targetName} stream did not start after multiple attempts.`);
+                dispatch({ type: 'SET_STREAM_STATE', payload: false });
+                stopStreamTimer();
+                setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง`, alertType: 'error' } });
+                return;
             }
-            attemptCount++;
+        } else {
+            console.log(`${targetName}: Stream is already active, platform should be streaming`);
         }
 
-        if (!isStreamActive) {
-            console.error(`${targetName} stream did not start after multiple attempts.`);
-            dispatch({ type: 'SET_STREAM_STATE', payload: false });
-            stopStreamTimer();
-            setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง`, alertType: 'error' } });
-            return;
-        }
-
-        console.log(`${targetName} stream started successfully. RTMP Server should now relay to YouTube!`);
-        setModal({ type: 'alert', props: { message: `เริ่มสตรีม ${targetName} สำเร็จ! กำลังส่งไป YouTube ผ่าน RTMP Server`, alertType: 'success' } });
+        console.log(`${targetName} stream started successfully via Multi-Platform RTMP Server!`);
+        setModal({ type: 'alert', props: { message: `เริ่มสตรีม ${targetName} สำเร็จ! กำลังส่งไปยังแพลตฟอร์มผ่าน Multi-Platform RTMP Server`, alertType: 'success' } });
 
     } catch (error: any) {
         console.error(`❌ Failed to start ${targetName} stream:`, error);
@@ -877,7 +889,7 @@ const startSpecificMultiOutput = useCallback(async (targetName: string) => {
         }
         setModal({ type: 'alert', props: { message: `ไม่สามารถเริ่มสตรีม ${targetName} ได้: ${errorMessage}`, alertType: 'error' } });
     }
-}, [appState.obsStatus, appState.isStreaming, obs, startStreamTimer, stopStreamTimer, dispatch, setModal]);
+}, [appState.obsStatus, obs, startStreamTimer, stopStreamTimer, dispatch, setModal]);
 
     const stopSpecificMultiOutput = useCallback(async (targetName: string) => {
         console.log(`🛑 Stop ${targetName} button clicked`);
@@ -1003,10 +1015,11 @@ const startSpecificMultiOutput = useCallback(async (targetName: string) => {
             return;
         }
         
-        if (appState.isStreaming) {
-            setModal({ type: 'alert', props: { message: 'กำลังสตรีมอยู่แล้ว', alertType: 'info' } });
-            return;
-        }
+        // ✅ ลบการตรวจสอบ isStreaming เพื่อให้สามารถ stream หลายแพลตฟอร์มพร้อมกันได้
+        // if (appState.isStreaming) {
+        //     setModal({ type: 'alert', props: { message: 'กำลังสตรีมอยู่แล้ว', alertType: 'info' } });
+        //     return;
+        // }
 
         if (!obs.current.identified) {
             setModal({ type: 'alert', props: { message: 'OBS WebSocket ไม่พร้อม กรุณาเชื่อมต่อใหม่', alertType: 'error' } });
@@ -1014,48 +1027,63 @@ const startSpecificMultiOutput = useCallback(async (targetName: string) => {
         }
 
         try {
-            // 🔧 ตั้งค่า OBS Stream Service ให้ส่งไป RTMP Server อัตโนมัติ
-            console.log('Setting up OBS Stream Service for all outputs via RTMP Server...');
-            await obs.current.call('SetStreamServiceSettings', {
-                streamServiceType: 'rtmp_custom',
-                streamServiceSettings: {
-                    server: 'rtmp://127.0.0.1:1935/live',
-                    key: 'my-stream-key'
-                }
-            });
-            
-            console.log('OBS Stream Service configured for all outputs!');
-            
-            // เริ่ม stream timer
-            startStreamTimer();
-            dispatch({ type: 'SET_STREAM_STATE', payload: true });
-            
-            // สั่งให้ OBS เริ่มสตรีม
-            console.log('Attempting to start OBS stream for all outputs...');
-            await obs.current.call('StartStream');
-            
-            // รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
-            let isStreamActive = false;
-            let attemptCount = 0;
-            const maxAttempts = 10;
-            const checkInterval = 1000;
-
-            while (!isStreamActive && attemptCount < maxAttempts) {
-                console.log(`Checking all outputs stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
-                const status = await obs.current.call('GetStreamStatus');
-                isStreamActive = status.outputActive;
-                if (!isStreamActive) {
-                    await new Promise(resolve => setTimeout(resolve, checkInterval));
-                }
-                attemptCount++;
+            // 🔧 ตรวจสอบสถานะการสตรีมก่อนตั้งค่า Stream Service
+            let currentStatus;
+            try {
+                currentStatus = await obs.current.call('GetStreamStatus');
+            } catch (statusError) {
+                console.warn('Could not get stream status:', statusError);
             }
 
-            if (!isStreamActive) {
-                console.error('All outputs stream did not start after multiple attempts.');
-                dispatch({ type: 'SET_STREAM_STATE', payload: false });
-                stopStreamTimer();
-                setModal({ type: 'alert', props: { message: 'ไม่สามารถเริ่มสตรีมทั้งหมดได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง', alertType: 'error' } });
-                return;
+            // ตั้งค่า Stream Service เฉพาะเมื่อไม่ได้สตรีมอยู่
+            if (!currentStatus || !currentStatus.outputActive) {
+                console.log('Setting up OBS Stream Service for all outputs via RTMP Server...');
+                await obs.current.call('SetStreamServiceSettings', {
+                    streamServiceType: 'rtmp_custom',
+                    streamServiceSettings: {
+                        server: 'rtmp://127.0.0.1:1935/live',
+                        key: 'my-stream-key'
+                    }
+                });
+                console.log('OBS Stream Service configured for all outputs!');
+            } else {
+                console.log('All outputs: Stream is already active, skipping service configuration');
+            }
+            // เริ่มสตรีมเฉพาะเมื่อยังไม่ได้สตรีมอยู่
+            if (!currentStatus || !currentStatus.outputActive) {
+                // เริ่ม stream timer
+                startStreamTimer();
+                dispatch({ type: 'SET_STREAM_STATE', payload: true });
+                
+                // สั่งให้ OBS เริ่มสตรีม
+                console.log('Attempting to start OBS stream for all outputs...');
+                await obs.current.call('StartStream');
+                
+                // รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
+                let isStreamActive = false;
+                let attemptCount = 0;
+                const maxAttempts = 10;
+                const checkInterval = 1000;
+
+                while (!isStreamActive && attemptCount < maxAttempts) {
+                    console.log(`Checking all outputs stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
+                    const status = await obs.current.call('GetStreamStatus');
+                    isStreamActive = status.outputActive;
+                    if (!isStreamActive) {
+                        await new Promise(resolve => setTimeout(resolve, checkInterval));
+                    }
+                    attemptCount++;
+                }
+
+                if (!isStreamActive) {
+                    console.error('All outputs stream did not start after multiple attempts.');
+                    dispatch({ type: 'SET_STREAM_STATE', payload: false });
+                    stopStreamTimer();
+                    setModal({ type: 'alert', props: { message: 'ไม่สามารถเริ่มสตรีมทั้งหมดได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง', alertType: 'error' } });
+                    return;
+                }
+            } else {
+                console.log('All outputs: Stream is already active, platform should be streaming');
             }
 
             console.log('All outputs stream started successfully. RTMP Server should now relay to YouTube!');
@@ -1195,62 +1223,69 @@ const handleStartStream = async () => {
         setModal({ type: 'alert', props: { message: 'ยังไม่ได้เชื่อมต่อกับ OBS!', alertType: 'error' } });
         return;
     }
-    if (appState.isStreaming) {
-        setModal({ type: 'alert', props: { message: 'กำลังสตรีมอยู่แล้ว', alertType: 'info' } });
-        return;
-    }
+    // ✅ ลบการตรวจสอบ isStreaming เพื่อให้สามารถ stream หลายแพลตฟอร์มพร้อมกันได้
+    // if (appState.isStreaming) {
+    //     setModal({ type: 'alert', props: { message: 'กำลังสตรีมอยู่แล้ว', alertType: 'info' } });
+    //     return;
+    // }
 
     try {
-        // 🔧 ตั้งค่า OBS Stream Service ให้ส่งไป RTMP Server อัตโนมัติ
-        console.log("Setting up OBS Stream Service for RTMP Server...");
-        await obs.current.call('SetStreamServiceSettings', {
-            streamServiceType: 'rtmp_custom',
-            streamServiceSettings: {
-                server: 'rtmp://127.0.0.1:1935/live',
-                key: 'my-stream-key'
+        // 🔧 ตรวจสอบสถานะการสตรีมก่อนตั้งค่า Stream Service
+        let currentStatus;
+        try {
+            currentStatus = await obs.current.call('GetStreamStatus');
+        } catch (statusError) {
+            console.warn('Could not get stream status:', statusError);
+        }
+
+        // ตั้งค่า Stream Service เฉพาะเมื่อไม่ได้สตรีมอยู่
+        if (!currentStatus || !currentStatus.outputActive) {
+            console.log("Setting up OBS Stream Service for Multi-Platform RTMP Server...");
+            
+            // ใช้ Multi-Platform RTMP Server
+            await obs.current.call('SetStreamServiceSettings', {
+                streamServiceType: 'rtmp_custom',
+                streamServiceSettings: {
+                    server: 'rtmp://127.0.0.1:1935/live',
+                    key: 'my-stream-key'
+                }
+            });
+            console.log("OBS Stream Service configured for Multi-Platform RTMP Server!");
+        } else {
+            console.log('General stream: Stream is already active, skipping service configuration');
+        }
+        // 1. สั่งให้ OBS เริ่มสตรีมเฉพาะเมื่อยังไม่ได้สตรีมอยู่
+        if (!currentStatus || !currentStatus.outputActive) {
+            console.log("Attempting to start OBS stream...");
+            await obs.current.call('StartStream');
+
+            // 2. รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
+            let isStreamActive = false;
+            let attemptCount = 0;
+            const maxAttempts = 10;
+            const checkInterval = 1000; // ตรวจสอบทุก 1 วินาที
+
+            while (!isStreamActive && attemptCount < maxAttempts) {
+                console.log(`Checking stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
+                const status = await obs.current.call('GetStreamStatus');
+                isStreamActive = status.outputActive;
+                if (!isStreamActive) {
+                    await new Promise(resolve => setTimeout(resolve, checkInterval));
+                }
+                attemptCount++;
             }
-        });
-        
-        console.log("OBS Stream Service configured successfully!");
-        
-        const streamConfig = {
-            twitchUrl: localStorage.getItem('twitch-key') ? 'rtmp://live-sjc.twitch.tv/app/' + localStorage.getItem('twitch-key') : '',
-            youtubeUrl: localStorage.getItem('youtube-key') ? 'rtmp://a.rtmp.youtube.com/live2/' + localStorage.getItem('youtube-key') : ''
-        };
 
-        const destinations = [streamConfig.twitchUrl, streamConfig.youtubeUrl].filter(Boolean);
-        //const srtInput = 'srt://localhost:10000?mode=caller&latency=1000';
-        const rtmpInput = 'rtmp://127.0.0.1/live/my-stream-key';
-        const ffmpegPath = 'C:\\ffmpeg\\bin\\ffmpeg.exe';
-
-        // 1. สั่งให้ OBS เริ่มสตรีม
-        console.log("Attempting to start OBS stream...");
-        await obs.current.call('StartStream');
-
-        // 2. รอจนกว่า OBS จะเริ่มสตรีมจริงๆ
-        let isStreamActive = false;
-        let attemptCount = 0;
-        const maxAttempts = 10;
-        const checkInterval = 1000; // ตรวจสอบทุก 1 วินาที
-
-        while (!isStreamActive && attemptCount < maxAttempts) {
-            console.log(`Checking stream status... (Attempt ${attemptCount + 1}/${maxAttempts})`);
-            const status = await obs.current.call('GetStreamStatus');
-            isStreamActive = status.outputActive;
             if (!isStreamActive) {
-                await new Promise(resolve => setTimeout(resolve, checkInterval));
+                console.error("OBS stream did not start after multiple attempts.");
+                setModal({ type: 'alert', props: { message: 'ไม่สามารถสั่งให้ OBS เริ่มสตรีมได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง', alertType: 'error' } });
+                return;
             }
-            attemptCount++;
+        } else {
+            console.log('General stream: Stream is already active');
         }
 
-        if (!isStreamActive) {
-            console.error("OBS stream did not start after multiple attempts.");
-            setModal({ type: 'alert', props: { message: 'ไม่สามารถสั่งให้ OBS เริ่มสตรีมได้ โปรดตรวจสอบการตั้งค่าและลองใหม่อีกครั้ง', alertType: 'error' } });
-            return;
-        }
-
-        console.log("OBS stream started successfully. RTMP Server should now relay to YouTube!");
-        setModal({ type: 'alert', props: { message: 'เริ่มสตรีมสำเร็จแล้ว! กำลังส่งไป YouTube ผ่าน RTMP Server', alertType: 'success' } });
+        console.log("OBS stream started successfully. Multi-Platform RTMP Server should now relay to all configured platforms!");
+        setModal({ type: 'alert', props: { message: 'เริ่มสตรีมสำเร็จแล้ว! กำลังส่งไปยังแพลตฟอร์มที่ตั้งค่าผ่าน Multi-Platform RTMP Server', alertType: 'success' } });
 
     } catch (error: any) {
         console.error("❌ Failed to start stream:", error);
